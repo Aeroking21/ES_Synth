@@ -1,3 +1,4 @@
+hi
 # Handshaking and auto-detection
   Stacksynth modules are designed to be joined together to make a larger keyboard. Messages are exchanged between modules using a CAN bus.
   Typically, one module will have a receiver role and synthesise the notes that are played any module. The other modules transmit notes.
