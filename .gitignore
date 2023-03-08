@@ -3,3 +3,7 @@
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
+<<<<<<< HEAD
+=======
+.vscode/extensions.json
+>>>>>>> f77a637737d45cfb8699b430f22fd95c24c5c161
