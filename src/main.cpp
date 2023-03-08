@@ -73,11 +73,6 @@ constexpr uint32_t stepSizes[NUM_NOTES] = {
   calculateStepSize(-9)  // C
 };
 
-// const uint32_t bitMask[12] = {
-//   0b000000000001, 0b000000000010, 0b000000000100,
-//   0b000000001000, 0b000000010000, 0b000000100000,
-//   0b000001000000, 0b000010000000, 0b000100000000,
-//   0b001000000000, 0b010000000000, 0b100000000000};
 
 void sampleISR() {
   static uint32_t phaseAcc = 0;
@@ -216,48 +211,9 @@ void scanKeysTask(void * pvParameters) {
         localCurrentStepSize = 0;
         break;
     }
-    // Serial.println(localCurrentStepSize);
-
-    // uint8_t stateTransition = (rotationPrevState << 2) | rotationCurrState;
-    // int saveRotationVar = rotationVariable;
     knob3.updateRotation(keyArray);
     localknob3Rotation = knob3.getRotation();
-    // switch (stateTransition) {
-    //   case 0b0001:
-    //     rotationVariable = -1;
-    //     Serial.println("Anti-clockwise!!");
-    //     break;
-    //   case 0b1110:
-    //     rotationVariable = -1;
-    //     Serial.println("Anti-clockwise!!");
-    //     break;
-    //   case 0b1011:
-    //     rotationVariable = 1;
-    //     Serial.println("Clockwise!!");
-    //     break;
-    //   case 0b0100:
-    //     rotationVariable = 1;
-    //     Serial.println("Clockwise!!");
-    //     break;
-    //   case 0b0011:
-    //   case 0b0110:
-    //   case 0b1001:
-    //   case 0b1100:
-    //     rotationVariable = saveRotationVar;
-    //     Serial.println("Impossible!!");
-    //     break;
-    //   default: rotationVariable = 0;
-    // }
-
-    // saveRotationVar = rotationVariable;
-    // localknob3Rotation += rotationVariable;
-    // localknob3Rotation = std::max(std::min(localknob3Rotation, KNOB_MAX_ROTATION), KNOB_MIN_ROTATION);
     
-    // rotationPrevState = rotationCurrState;
-
-    // UBaseType_t ux = uxTaskGetStackHighWaterMark( NULL );
-    // Serial.print("stack: ");
-    // Serial.println(ux);
     __atomic_store_n(&knob3Rotation, localknob3Rotation, __ATOMIC_RELAXED);
     __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
   }
