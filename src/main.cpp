@@ -82,6 +82,7 @@ void sampleISR() {
   }
 
   int32_t Vout = (phaseAcc_final >> 24) - 128;
+  Vout = Vout >> (8 - knob3Rotation);
   analogWrite(OUTR_PIN, (Vout + 128));
 
 }
