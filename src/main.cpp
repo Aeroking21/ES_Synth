@@ -4,6 +4,23 @@
 #include <STM32FreeRTOS.h>
 #include <knob.h>
 
+//Constants
+const uint32_t interval = 100; //Display update interval
+//volatile uint32_t currentStepSize;
+volatile uint8_t keyArray[7];
+const char * globalKeySymbol;
+
+//Set key step sizes
+const uint32_t stepSizes [] = {51149156, 54077543, 57396381, 60715220, 64424509, 68133799, 71647864, 76528508, 81018701, 85899346, 90975216, 96441538};
+const std::string keyOrder[] = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
+const uint8_t NUM_KEYS = 8;
+volatile uint32_t currentStepSize[NUM_KEYS];
+volatile uint32_t NotesPressed[NUM_KEYS];
+
+SemaphoreHandle_t keyArrayMutex;
+SemaphoreHandle_t stepSizeMutex;
+
+
 // Pin definitions
 // Row select and enable
 const int RA0_PIN = D3;
@@ -36,52 +53,37 @@ const int HKOE_BIT = 6;
 const int KNOB_MAX_ROTATION = 8;
 const int KNOB_MIN_ROTATION = 0;
 
-// Display driver object
-U8G2_SSD1305_128X32_NONAME_F_HW_I2C u8g2(U8G2_R0);
-
-volatile uint32_t currentStepSize = 0;
-volatile uint8_t keyArray[7];
-// volatile uint8_t* keyArray_ptr = keyArray;
 volatile signed int rotationVariable = 0;
 volatile signed int knob3Rotation = 8;
 
-SemaphoreHandle_t keyArrayMutex;
-
-// Expression to calculate step size 
-constexpr int NUM_NOTES = 12;
-constexpr double FREQ_RATIO = std::pow(2.0, 1.0/12.0);
-constexpr double BASE_FREQ = 440.0;
-constexpr double SAMPLE_RATE = 22000.0; 
-
-constexpr uint32_t calculateStepSize(int note) {
-  uint32_t freq = BASE_FREQ * std::pow(FREQ_RATIO, note);
-  return (std::pow(2.0, 32.0) * freq) / SAMPLE_RATE;
-}
-
-constexpr uint32_t stepSizes[NUM_NOTES] = {
-  calculateStepSize(2), // B
-  calculateStepSize(1), // A#
-  calculateStepSize(0), // A
-  calculateStepSize(-1), // G#
-  calculateStepSize(-2), // G
-  calculateStepSize(-3), // F#
-  calculateStepSize(-4), // F
-  calculateStepSize(-5), // E
-  calculateStepSize(-6), // D#
-  calculateStepSize(-7), // D
-  calculateStepSize(-8), // C#
-  calculateStepSize(-9)  // C
-};
+// Display driver object
+U8G2_SSD1305_128X32_NONAME_F_HW_I2C u8g2(U8G2_R0);
 
 
 void sampleISR() {
-  static uint32_t phaseAcc = 0;
-  phaseAcc += currentStepSize;
+  static int32_t phaseAcc[NUM_KEYS] = {0,0,0,0,0,0,0,0};
 
-  int32_t Vout = (phaseAcc >> 24) - 128;
-  
-  Vout = Vout >> (8 - knob3Rotation);
-  analogWrite(OUTR_PIN, Vout + 128);
+  int32_t localCurrentStepSize[NUM_KEYS];
+  int32_t keysPressed = 0;
+  //maybe use a mutex and make a copy
+
+  for (int i=0; i < NUM_KEYS; i++) {
+    localCurrentStepSize[i] = currentStepSize[i]; 
+    phaseAcc[i] += localCurrentStepSize[i];
+    if(localCurrentStepSize[i] != 0){
+      keysPressed++;
+    } 
+  }
+
+  int32_t phaseAcc_final = 0;
+
+  for (int i=0; i<NUM_KEYS; i++) {
+   phaseAcc_final += phaseAcc[i] / keysPressed;
+  }
+
+  int32_t Vout = (phaseAcc_final >> 24) - 128;
+  analogWrite(OUTR_PIN, (Vout + 128));
+
 }
 
 //Function to set outputs using key matrix
@@ -104,118 +106,83 @@ uint8_t readCols(){
   uint8_t c3 = digitalRead(C3_PIN);
 
   uint8_t res = (c0 << 3) | (c1 << 2) | (c2 << 1) | c3 ;
-  // Serial.println(res, BIN);
+
   return res;
 }
 
-void setRows(uint8_t rowIdx){
-
+void setRow(uint8_t rowIdx){
   digitalWrite(REN_PIN, LOW);
-  digitalWrite(RA0_PIN, LOW);
-  digitalWrite(RA1_PIN, LOW);
-  digitalWrite(RA2_PIN, LOW);
-
-  if (rowIdx == 0)
-  {
-    // digitalWrite(RA0_PIN, LOW);
-  }
-  if (rowIdx == 1)
-  {
-    digitalWrite(RA0_PIN, HIGH);
-  }
-  if (rowIdx == 2)
-  {
-    digitalWrite(RA1_PIN, HIGH);
-  }
-  if (rowIdx == 3)
-  {
-    digitalWrite(RA0_PIN, HIGH);
-    digitalWrite(RA1_PIN, HIGH);
-  }
-  if (rowIdx == 4)
-  {
-    digitalWrite(RA2_PIN, HIGH);
-  }
-  
+  digitalWrite(RA0_PIN, rowIdx & 0x01);
+  digitalWrite(RA1_PIN, rowIdx & 0x02);
+  digitalWrite(RA2_PIN, rowIdx & 0x04);
   digitalWrite(REN_PIN, HIGH);
 }
 
+
 void scanKeysTask(void * pvParameters) {
 
-  static uint32_t localCurrentStepSize = 0;
   static signed int localknob3Rotation = 8;
-  const TickType_t xFrequency = 30/portTICK_PERIOD_MS;
+  const TickType_t xFrequency = 20/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
   Knob knob3(3, 8, 0, 8);
-  
-  while (1) {
-    // Serial.println("scan key task loop!");
+
+  while(1){
     vTaskDelayUntil( &xLastWakeTime, xFrequency );
 
-    for (int i = 0; i < 4; i++) {
-      setRows(i);
-      delayMicroseconds(3);
-      keyArray[i] = readCols(); 
-    }
-
-    static uint8_t rotationPrevState = 0;
+    uint32_t lastStepSize = 0;
+    const uint32_t * localStepSizes = stepSizes;
+    uint32_t notesPressed[8] = {128,128,128,128,128,128,128,128};
 
     xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
-    uint32_t key_pressed = (keyArray[0] << 8) | (keyArray[1] << 4) | keyArray[2];
+    for(uint8_t row = 0; row < 4; row++){
+      setRow(row);
+      delayMicroseconds(3);
+ 
+      uint8_t keys = readCols();
+      keyArray[row] = keys;
+ 
+    }
+    static uint8_t rotationPrevState = 0;
+
+    int counter = 0;
+    int index = 0;
+    for(int i=0; i < 3; i++){
+
+      uint8_t key = ~keyArray[i];
+      for(int j=0; j < 4; j++){
+
+        if(unsigned((key >> j) & 1) == 1){
+          notesPressed[index] = counter;
+          index++;
+        }
+        counter++;
+      }
+
+    }
+
     xSemaphoreGive(keyArrayMutex);
 
-    // Serial.println(key_pressed, BIN);
-    int noteIndex = ~key_pressed & 0xfff;
+    int32_t localCurrentStepSize = 0;
 
-    switch(noteIndex) {
-      case 0:
-        localCurrentStepSize = 0;
-        break;
-      case 1:
-        localCurrentStepSize = stepSizes[0];
-        break;
-      case 2:
-        localCurrentStepSize = stepSizes[1];
-        break;
-      case 4:
-        localCurrentStepSize = stepSizes[2];
-        break;
-      case 8:
-        localCurrentStepSize = stepSizes[3];
-        break;
-      case 16:
-        localCurrentStepSize = stepSizes[4];
-        break;
-      case 32:
-        localCurrentStepSize = stepSizes[5];
-        break;
-      case 64:
-        localCurrentStepSize = stepSizes[6];
-        break;
-      case 128:
-        localCurrentStepSize = stepSizes[7];
-        break;
-      case 256:
-        localCurrentStepSize = stepSizes[8];
-        break;
-      case 512:
-        localCurrentStepSize = stepSizes[9];
-        break;
-      case 1024:
-        localCurrentStepSize = stepSizes[10];
-        break;
-      case 2048:
-        localCurrentStepSize = stepSizes[11];
-        break;
-      default:
-        localCurrentStepSize = 0;
-        break;
+    xSemaphoreTake(stepSizeMutex, portMAX_DELAY);
+    for (int i = 0; i < NUM_KEYS; i++) {
+
+      if (notesPressed[i] != 128) {
+        localCurrentStepSize = stepSizes[notesPressed[i]];
+        currentStepSize[i] = localCurrentStepSize;
+      } 
+      else {
+        currentStepSize[i] = 0;
+      }
+      
     }
+    xSemaphoreGive(stepSizeMutex);
+
     knob3.updateRotation(keyArray);
     localknob3Rotation = knob3.getRotation();
     
     __atomic_store_n(&knob3Rotation, localknob3Rotation, __ATOMIC_RELAXED);
-    __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
+ 
   }
 }
 
@@ -223,13 +190,12 @@ void displayUpdateTask(void * pvParameters) {
   const TickType_t xFrequency2 = 100/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime2 = xTaskGetTickCount();
   
-  // Update display
-  u8g2.clearBuffer();         // clear the internal memory
   u8g2.setFont(u8g2_font_ncenB08_tr); // choose a suitable font
 
   while (1) {
     // Serial.println("display update task loop!");
     vTaskDelayUntil(&xLastWakeTime2, xFrequency2);
+    u8g2.clearBuffer();
 
     xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
     uint32_t key_pressed = (keyArray[0] << 8) | (keyArray[1] << 4) | keyArray[2];
@@ -286,10 +252,6 @@ void displayUpdateTask(void * pvParameters) {
     u8g2.sendBuffer();  
     
     digitalToggle(LED_BUILTIN);
-
-    // UBaseType_t ux = uxTaskGetStackHighWaterMark( NULL );
-    // Serial.print("stack: ");
-    // Serial.println(ux);
   } 
 }
 
@@ -350,6 +312,7 @@ void setup() {
   Serial.println("display update task created!");
 
   keyArrayMutex = xSemaphoreCreateMutex();
+  stepSizeMutex = xSemaphoreCreateMutex();
 
   if (keyArrayMutex == NULL) {
     Serial.println("Error: Mutex was not created because the memory required to hold the mutex could not be allocated");
