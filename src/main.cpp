@@ -111,7 +111,7 @@ void sampleISR() {
    phaseAcc_final += phaseAcc[i] / keysPressed;
   }
 
-  int32_t Vout = (phaseAcc_final >> 24) - 128;
+  int32_t Vout = (phaseAcc_final >> 24);
   analogWrite(OUTR_PIN, (Vout + 128));
 
 }
