@@ -12,12 +12,13 @@ constexpr char *notes[] = {"-", "B", "A#", "A", "G#", "G", "F#", "F", "E", "D#",
 // Global Variables
 volatile uint32_t currentStepSize;
 volatile uint8_t keyArray[7];
-volatile int noteInd;
+//volatile int noteInd;
 // volatile uint8_t TX_Message[8] = {0};
 volatile uint8_t RX_Message[8] = {0};
 
 // Global handle for mutex
 SemaphoreHandle_t keyArrayMutex;
+SemaphoreHandle_t RX_MessageMutex;
 // Queue handler
 QueueHandle_t msgInQ;
 
@@ -115,7 +116,7 @@ void scanKeysTask(void *pvParameters)
 
     xSemaphoreGive(keyArrayMutex);
     noteIndex = ~noteIndex & 0xfff;
-    __atomic_store_n(&noteInd, 0, __ATOMIC_RELAXED);
+    //__atomic_store_n(&noteInd, 0, __ATOMIC_RELAXED);
     uint8_t TX_Message[8] = {0};
     TX_Message[0] = 'R';
     TX_Message[1] = 0;
@@ -125,11 +126,11 @@ void scanKeysTask(void *pvParameters)
       if ((noteIndex >> (i - 1)) == 1)
       {
         // currentStepSize = stepSizes[i];
-        __atomic_store_n(&noteInd, i, __ATOMIC_RELAXED);
+        //__atomic_store_n(&noteInd, i, __ATOMIC_RELAXED);
         // u8g2.print(notes[i]);
         TX_Message[0] = 'P';
         TX_Message[1] = 4;
-        TX_Message[2] = i - 1;
+        TX_Message[2] = i;
         break;
       }
       // else{
@@ -137,7 +138,7 @@ void scanKeysTask(void *pvParameters)
       // }
     }
     CAN_TX(0x123, TX_Message);
-    __atomic_store_n(&currentStepSize, stepSizes[noteInd], __ATOMIC_RELAXED);
+    //__atomic_store_n(&currentStepSize, stepSizes[noteInd], __ATOMIC_RELAXED);
   }
 }
 
@@ -160,21 +161,27 @@ void displayUpdateTask(void *pvParameters)
     u8g2.print(keyArray[2], HEX);
     xSemaphoreGive(keyArrayMutex);
 
+    uint8_t rx_message[8];
+    xSemaphoreTake(RX_MessageMutex, portMAX_DELAY);
+    std::copy(std::begin(RX_Message), std::end(RX_Message), std::begin(rx_message));
+    xSemaphoreGive(RX_MessageMutex);
+
     u8g2.setCursor(3, 30);
-    int index = __atomic_load_n(&noteInd, __ATOMIC_RELAXED);
+    int index = rx_message[2]; //__atomic_load_n(&noteInd, __ATOMIC_RELAXED);
     u8g2.print(notes[index]);
 
-    uint32_t ID;
-    //uint8_t RX_Message[8] = {0};
+    // uint32_t ID;
+    //  uint8_t RX_Message[8] = {0};
 
     // while (CAN_CheckRXLevel())
     // {
     //   CAN_RX(ID, RX_Message);
     // }
     u8g2.setCursor(66, 30);
-    u8g2.print((char)RX_Message[0]);
-    u8g2.print(RX_Message[1]);
-    u8g2.print(RX_Message[2]);
+    // xSemaphoreTake(RX_MessageMutex, portMAX_DELAY);
+    u8g2.print((char)rx_message[0]);
+    u8g2.print(rx_message[1]);
+    u8g2.print(rx_message[2]);
 
     u8g2.sendBuffer(); // transfer internal memory to the display
 
@@ -195,7 +202,22 @@ void decodeTask(void *pvParameters)
 {
   while (1)
   {
-    xQueueReceive(msgInQ, (void*) &RX_Message, portMAX_DELAY);
+    xQueueReceive(msgInQ, (void *)&RX_Message, portMAX_DELAY);
+
+    uint8_t rx_message[8];
+    xSemaphoreTake(RX_MessageMutex, portMAX_DELAY);
+    std::copy(std::begin(RX_Message), std::end(RX_Message), std::begin(rx_message));
+    xSemaphoreGive(RX_MessageMutex);
+    if ((char)rx_message[0] == 'P')
+    {
+      uint32_t step = stepSizes[rx_message[2]];
+      step = step << (rx_message[1] - 4);
+      __atomic_store_n(&currentStepSize, step, __ATOMIC_RELAXED);
+    }
+    else
+    {
+      __atomic_store_n(&currentStepSize, stepSizes[0], __ATOMIC_RELAXED);
+    }
   }
 }
 
@@ -261,9 +283,9 @@ void setup()
   xTaskCreate(
       decodeTask,     /* Function that implements the task */
       "decode",       /* Text name for the task */
-      72,                   /* Stack size in words, not bytes */
-      NULL,                  /* Parameter passed into the task */
-      3,                     /* Task priority */
+      72,             /* Stack size in words, not bytes */
+      NULL,           /* Parameter passed into the task */
+      3,              /* Task priority */
       &decodeHandle); /* Pointer to store the task handle */
 
   // Initialise UART
@@ -271,6 +293,7 @@ void setup()
   Serial.println("Hello World");
 
   keyArrayMutex = xSemaphoreCreateMutex();
+  RX_MessageMutex = xSemaphoreCreateMutex();
 
   vTaskStartScheduler();
 }
