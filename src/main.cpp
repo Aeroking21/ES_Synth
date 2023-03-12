@@ -2,24 +2,20 @@
 #include <U8g2lib.h>
 #include <STM32FreeRTOS.h>
 #include <string>
-
+#include <knob.h>
+#include <math.h>
 
 //Constants
 const uint32_t interval = 100; //Display update interval
+
+const uint8_t MAX_KEYS_PLAYED_TGT = 8;
+
 //volatile uint32_t currentStepSize;
 volatile uint8_t keyArray[7];
-const char * globalKeySymbol;
-
-//Set key step sizes
-const uint32_t stepSizes [] = {51149156, 54077543, 57396381, 60715220, 64424509, 68133799, 71647864, 76528508, 81018701, 85899346, 90975216, 96441538};
-const std::string keyOrder[] = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
-const uint8_t NUM_KEYS = 8;
-volatile uint32_t currentStepSize[NUM_KEYS];
-volatile uint32_t NotesPressed[NUM_KEYS];
+volatile uint32_t currentStepSize[MAX_KEYS_PLAYED_TGT];
 
 SemaphoreHandle_t keyArrayMutex;
 SemaphoreHandle_t stepSizeMutex;
-
 
 //Pin definitions
 //Row select and enable
@@ -49,10 +45,41 @@ const int DRST_BIT = 4;
 const int HKOW_BIT = 5;
 const int HKOE_BIT = 6;
 
+// Parameters
+const int KNOB_MAX_ROTATION = 8;
+const int KNOB_MIN_ROTATION = 0;
 
+volatile signed int rotationVariable = 0;
+volatile signed int knob3Rotation = 8;
 
 //Display driver object
 U8G2_SSD1305_128X32_NONAME_F_HW_I2C u8g2(U8G2_R0);
+
+// Expression to calculate step size 
+constexpr int NUM_NOTES = 12;
+constexpr double FREQ_RATIO = std::pow(2.0, 1.0/12.0);
+constexpr double BASE_FREQ = 440.0;
+constexpr double SAMPLE_RATE = 22000.0; 
+
+constexpr uint32_t calculateStepSize(int note) {
+  uint32_t freq = BASE_FREQ * std::pow(FREQ_RATIO, note);
+  return (std::pow(2.0, 32.0) * freq) / SAMPLE_RATE;
+}
+
+constexpr uint32_t stepSizes[NUM_NOTES] = {
+  calculateStepSize(-9),  // C
+  calculateStepSize(-8), // C#
+  calculateStepSize(-7), // D
+  calculateStepSize(-6), // D#
+  calculateStepSize(-5), // E
+  calculateStepSize(-4), // F
+  calculateStepSize(-3), // F#
+  calculateStepSize(-2), // G
+  calculateStepSize(-1), // G#
+  calculateStepSize(0), // A
+  calculateStepSize(1), // A#
+  calculateStepSize(2) // B  
+};
 
 //Function to set outputs using key matrix
 void setOutMuxBit(const uint8_t bitIdx, const bool value) {
@@ -67,10 +94,34 @@ void setOutMuxBit(const uint8_t bitIdx, const bool value) {
 }
 
 void setRow(uint8_t rowIdx){
+
   digitalWrite(REN_PIN, LOW);
-  digitalWrite(RA0_PIN, rowIdx & 0x01);
-  digitalWrite(RA1_PIN, rowIdx & 0x02);
-  digitalWrite(RA2_PIN, rowIdx & 0x04);
+  digitalWrite(RA0_PIN, LOW);
+  digitalWrite(RA1_PIN, LOW);
+  digitalWrite(RA2_PIN, LOW);
+
+  if (rowIdx == 0)
+  {
+    // digitalWrite(RA0_PIN, LOW);
+  }
+  if (rowIdx == 1)
+  {
+    digitalWrite(RA0_PIN, HIGH);
+  }
+  if (rowIdx == 2)
+  {
+    digitalWrite(RA1_PIN, HIGH);
+  }
+  if (rowIdx == 3)
+  {
+    digitalWrite(RA0_PIN, HIGH);
+    digitalWrite(RA1_PIN, HIGH);
+  }
+  if (rowIdx == 4)
+  {
+    digitalWrite(RA2_PIN, HIGH);
+  }
+  
   digitalWrite(REN_PIN, HIGH);
 }
 
@@ -80,26 +131,21 @@ uint8_t readCols(){
   uint8_t c2 = digitalRead(C2_PIN);
   uint8_t c3 = digitalRead(C3_PIN);
 
-  uint8_t result = 0;
-  result |= (c0 << 0);
-  result |= (c1 << 1);
-  result |= (c2 << 2);
-  result |= (c3 << 3);
-
-  return result;
-
+  uint8_t res = (c0 << 3) | (c1 << 2) | (c2 << 1) | c3;
+  return res;
 }
 
 void sampleISR() {
-  static int32_t phaseAcc[NUM_KEYS] = {0,0,0,0,0,0,0,0};
+  static int32_t phaseAcc[MAX_KEYS_PLAYED_TGT] = {};
 
-  int32_t localCurrentStepSize[NUM_KEYS];
+  int32_t localCurrentStepSize[MAX_KEYS_PLAYED_TGT];
   int32_t keysPressed = 0;
   //maybe use a mutex and make a copy
 
-  for (int i=0; i < NUM_KEYS; i++) {
+  for (int i=0; i < MAX_KEYS_PLAYED_TGT; i++) {
     localCurrentStepSize[i] = currentStepSize[i]; 
     phaseAcc[i] += localCurrentStepSize[i];
+
     if(localCurrentStepSize[i] != 0){
       keysPressed++;
     } 
@@ -107,108 +153,162 @@ void sampleISR() {
 
   int32_t phaseAcc_final = 0;
 
-  for (int i=0; i<NUM_KEYS; i++) {
+  for (int i=0; i<MAX_KEYS_PLAYED_TGT; i++) {
    phaseAcc_final += phaseAcc[i] / keysPressed;
   }
 
-  int32_t Vout = (phaseAcc_final >> 24) - 128;
+  int32_t Vout = (phaseAcc_final >> 24);
+  Vout = Vout >> (8 - knob3Rotation);
   analogWrite(OUTR_PIN, (Vout + 128));
 
 }
 
 void scanKeysTask(void * pvParameters) {
 
-  const TickType_t xFrequency = 20/portTICK_PERIOD_MS;
+  const TickType_t xFrequency = 30/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
+  static signed int localknob3Rotation = 8;
+  Knob knob3(3, 8, 0, 8);
 
   while(1){
     vTaskDelayUntil( &xLastWakeTime, xFrequency );
 
-    uint32_t lastStepSize = 0;
-    const uint32_t * localStepSizes = stepSizes;
-    uint32_t notesPressed[8] = {128,128,128,128,128,128,128,128};
+    uint8_t notesPressed[MAX_KEYS_PLAYED_TGT] = {128,128,128,128,128,128,128,128};
+
+    // Serial.println("scan key loop");
+    // xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
+    // uint32_t key_pressed = (keyArray[0] << 8) | (keyArray[1] << 4) | keyArray[2];
+
+    // int noteIndex = ~key_pressed & 0xfff;
+    // Serial.println(noteIndex);
 
     xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
-    for(uint8_t row = 0; row < 4; row++){
+
+    for (int row = 0; row < 4; row++) {
       setRow(row);
       delayMicroseconds(3);
- 
-      uint8_t keys = readCols();
-      keyArray[row] = keys;
- 
+      keyArray[row] = readCols(); 
     }
     
     int counter = 0;
     int index = 0;
+
     for(int i=0; i < 3; i++){
 
       uint8_t key = ~keyArray[i];
+
       for(int j=0; j < 4; j++){
 
-        if(unsigned((key >> j) & 1) == 1){
+        if(unsigned((key >> (3-j) & 1) == 1)){
           notesPressed[index] = counter;
           index++;
         }
         counter++;
       }
-
     }
 
     xSemaphoreGive(keyArrayMutex);
-
-    int32_t localCurrentStepSize = 0;
-
-    xSemaphoreTake(stepSizeMutex, portMAX_DELAY);
-    for (int i = 0; i < NUM_KEYS; i++) {
+    
+    int32_t localCurrentStepSize[MAX_KEYS_PLAYED_TGT] = {};
+    
+    for (int i = 0; i < MAX_KEYS_PLAYED_TGT; i++) {
+    
 
       if (notesPressed[i] != 128) {
-        localCurrentStepSize = stepSizes[notesPressed[i]];
-        currentStepSize[i] = localCurrentStepSize;
+        Serial.println(notesPressed[i]);
+        localCurrentStepSize[i] = stepSizes[notesPressed[i]];
       } 
       else {
-        currentStepSize[i] = 0;
+        localCurrentStepSize[i] = 0;
       }
       
+      xSemaphoreTake(stepSizeMutex, portMAX_DELAY);
+      __atomic_store_n(&currentStepSize[i], localCurrentStepSize[i], __ATOMIC_RELAXED);
+      xSemaphoreGive(stepSizeMutex);
     }
-    xSemaphoreGive(stepSizeMutex);
+
+    knob3.updateRotation(keyArray);
+    localknob3Rotation = knob3.getRotation();
+
+    __atomic_store_n(&knob3Rotation, localknob3Rotation, __ATOMIC_RELAXED);
     
     // currentStepSize = lastStepSize;
     // __atomic_store_n(&currentStepSize, lastStepSize, __ATOMIC_RELAXED);
     // __atomic_store_n(&globalKeySymbol, keysymbol, __ATOMIC_RELAXED);
-    
-
   }
 }
 
-
-
-void displayUpdateTask(void * pvParameters){
-
-  const TickType_t xFrequency = 100/portTICK_PERIOD_MS;
-  TickType_t xLastWakeTime = xTaskGetTickCount();
-
-  while(1){
-    vTaskDelayUntil( &xLastWakeTime, xFrequency );
-
-    //Update display
+void displayUpdateTask(void * pvParameters) {
+  const TickType_t xFrequency2 = 100/portTICK_PERIOD_MS;
+  TickType_t xLastWakeTime2 = xTaskGetTickCount();
   
-    u8g2.clearBuffer();         // clear the internal memory
-    u8g2.setFont(u8g2_font_ncenB08_tr); // choose a suitable font
-    u8g2.drawStr(2,10,"Hi");  // write something to the internal memory
-    
-    u8g2.setCursor(2,20);
-    for(uint8_t i=0;i<3;i++){
-      u8g2.print(keyArray[i], HEX); 
-    }
-    
-    // Store the result in the global variable
-    //u8g2.drawStr(2,30,globalKeySymbol);
-    u8g2.setCursor(30,30);
-    u8g2.sendBuffer();          // transfer internal memory to the display
+  // Update display
+  u8g2.clearBuffer();         // clear the internal memory
+  u8g2.setFont(u8g2_font_ncenB08_tr); // choose a suitable font
 
-    //Toggle LED
+  while (1) {
+    vTaskDelayUntil(&xLastWakeTime2, xFrequency2);
+
+    xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
+    uint32_t key_pressed = (keyArray[0] << 8) | (keyArray[1] << 4) | keyArray[2];
+    xSemaphoreGive(keyArrayMutex);
+
+    u8g2.clearBuffer();         // clear the internal memory
+    u8g2.setCursor(2,10);
+    // Serial.println(key_pressed, BIN);
+
+    int noteIndex = ~key_pressed & 0xfff;
+
+    switch(noteIndex) {
+      case 1:
+        u8g2.print("B"); 
+        break;
+      case 2:
+        u8g2.print("A#"); 
+        break;
+      case 4:
+        u8g2.print("A"); 
+        break;
+      case 8:
+        u8g2.print("G#"); 
+        break;
+      case 16:
+        u8g2.print("G"); 
+        break;
+      case 32:
+        u8g2.print("F#"); 
+        break;
+      case 64:
+        u8g2.print("F"); 
+        break;
+      case 128:
+        u8g2.print("E"); 
+        break;
+      case 256:
+        u8g2.print("D#"); 
+        break;
+      case 512:
+        u8g2.print("D"); 
+        break;
+      case 1024:
+        u8g2.print("C#"); 
+        break;
+      case 2048:
+        u8g2.print("C"); 
+        break;
+    }
+    u8g2.setCursor(2,20);
+    u8g2.print("Volume : "); 
+    u8g2.print(knob3Rotation, DEC); 
+    
+    u8g2.sendBuffer();  
+    
     digitalToggle(LED_BUILTIN);
-  }
+
+    // UBaseType_t ux = uxTaskGetStackHighWaterMark( NULL );
+    // Serial.print("stack: ");
+    // Serial.println(ux);
+  } 
 }
 
 void setup() {
