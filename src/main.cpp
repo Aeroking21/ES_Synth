@@ -118,7 +118,7 @@ void echoes(void *pvParameters)
 
     if ((char)rx_message1[0] == 'R')
     {
-      if (_ech < 100)
+      if (_ech < 1000)
       {
         _ech += 4;
       }
@@ -131,7 +131,7 @@ void echoes(void *pvParameters)
       }
       else
       {
-        if (_ech < 100)
+        if (_ech < 1000)
         {
           _ech += 1;
         }
@@ -210,7 +210,7 @@ void sampleISR()
 
     int32_t Vout = (phaseAcc >> 23) - 128;
 
-    Vout = (Vout + 128)/*/_ech*/;
+    Vout = (Vout + 128)/*/_ech*10*/;
 
     Vout = Vout;
 
@@ -292,7 +292,7 @@ void sampleISR()
       int index = rx_message[2]; //__atomic_load_n(&noteInd, __ATOMIC_RELAXED);
       u8g2.print(notes[index]);
       u8g2.setCursor(30, 30);
-      u8g2.print(EN);
+      u8g2.print(ech);
 
       // uint32_t ID;
       //  uint8_t RX_Message[8] = {0};
@@ -340,6 +340,7 @@ void sampleISR()
       }
       else
       {
+        __atomic_store_n(&currentStepSize, stepSizes[0], __ATOMIC_RELAXED);
       }
     }
   }
