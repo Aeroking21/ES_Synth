@@ -174,10 +174,10 @@ int i;
 bool keyReleased;
 bool off;
 double currentAmplitude;
-int envelope(double tA, double tD, double maxAmplitude, double tR,double ks){
+double envelope(double tA, double tD, double maxAmplitude, double tR,double ks){
   double kA = maxAmplitude/tA;
   double kD = (maxAmplitude-ks)/(tD);
-  double kR = ks/tR;
+  double kR = currentAmplitude/tR;
   double newtD = tD + tA;
    if (off == true){
      if(t <= tR){
@@ -187,7 +187,7 @@ int envelope(double tA, double tD, double maxAmplitude, double tR,double ks){
        keyReleased = false;
        currentStepSize = 0;
        currentAmplitude = 0;
-       return 0;
+       return 0.0;
      }
   }
   else if (t <= tA){
@@ -196,9 +196,9 @@ int envelope(double tA, double tD, double maxAmplitude, double tR,double ks){
     return kA*t;
   }
   else if(t <= newtD){
-    currentAmplitude = 8-kD*(t-tA);
+    currentAmplitude = maxAmplitude-kD*(t-tA);
     //Serial.println(8-kD*(t-tA));
-    return 8-kD*(t-tA);
+    return maxAmplitude-kD*(t-tA);
     //over 8 seconds, output decreases from 8 to 6
     //8-ks = 2
   }
@@ -221,14 +221,20 @@ void sampleISR() {
 
   int32_t Vout = (phaseAcc >> 24) - 128;
   
-  Vout = Vout >> (8 - knob3Rotation);
+  
 
-  Vout = Vout >> (8 - envelope(8.0, 8.0,8.0, 8.0, 6.0));//make output 0 
+  Vout = Vout *envelope(16.0, 16.0,255.0, 16.0, 100.0);//make output 0 
+  Vout = Vout/256;
+  Vout = Vout >> (8 - knob3Rotation);
   if(currentStepSize != 0){
-    if(i > 5000){
+    if(i > 2500){
       t+=1;
-      //Serial.println(t);
       i = 0;
+    }
+    if(i > 5000){
+      //t+=1;
+      Serial.println(envelope(8.0, 8.0,255.0, 8.0, 200.0));
+      //i = 0;
       
     }
     
@@ -293,6 +299,11 @@ void setRows(uint8_t rowIdx){
   {
     digitalWrite(RA2_PIN, HIGH);
   }
+  if(rowIdx == 6)
+  {
+    digitalWrite(RA1_PIN, HIGH);
+    digitalWrite(RA2_PIN, HIGH);
+  }
   
   digitalWrite(REN_PIN, HIGH);
 }
@@ -304,12 +315,14 @@ void scanKeysTask(void * pvParameters) {
   const TickType_t xFrequency = 30/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
   Knob knob3(3, 8, 0, 8);
+  Knob knob1(1,8,0,8);
+
   
   while (1) {
     // Serial.println("scan key task loop!");
     vTaskDelayUntil( &xLastWakeTime, xFrequency );
 
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 7; i++) {
       setRows(i);
       delayMicroseconds(3);
       keyArray[i] = readCols(); 
@@ -320,9 +333,14 @@ void scanKeysTask(void * pvParameters) {
 
     xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
     uint32_t key_pressed = (keyArray[0] << 8) | (keyArray[1] << 4) | keyArray[2];
+    uint32_t knob_selected = keyArray[6];
     xSemaphoreGive(keyArrayMutex);
 
-    // Serial.println(key_pressed, BIN);
+    //Serial.println(knob_selected, BIN);
+    if (knob_selected == 0b1011){
+      
+      Serial.println("Selected");
+    }
     int noteIndex = ~key_pressed & 0xfff;
   if(noteIndex == 0){
     if(off == false){
