@@ -178,6 +178,7 @@ int envelope(double tA, double tD, double maxAmplitude, double tR,double ks){
   double kA = maxAmplitude/tA;
   double kD = (maxAmplitude-ks)/(tD);
   double kR = ks/tR;
+  double newtD = tD + tA;
    if (off == true){
      if(t <= tR){
         return currentAmplitude-kR*t;
@@ -194,8 +195,9 @@ int envelope(double tA, double tD, double maxAmplitude, double tR,double ks){
     keyReleased = true;
     return kA*t;
   }
-  else if(t <= tD){
+  else if(t <= newtD){
     currentAmplitude = 8-kD*(t-tA);
+    //Serial.println(8-kD*(t-tA));
     return 8-kD*(t-tA);
     //over 8 seconds, output decreases from 8 to 6
     //8-ks = 2
@@ -227,7 +229,7 @@ void sampleISR() {
       t+=1;
       //Serial.println(t);
       i = 0;
-      //Serial.println(envelope(8, 4,8, 2, 6, 2));
+      
     }
     
   }
