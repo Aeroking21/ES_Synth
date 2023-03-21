@@ -16,16 +16,16 @@ class Knob {
     signed int getRotation() volatile;
 
   private:
-    signed int rotation;
-    int lowerLimit;
-    int upperLimit;
+    int row = 0;
+    int knobIdx = 0;
+    int lowerLimit = 0;
+    int upperLimit = 8;
     int rotationCurrState = 0;
     int rotationPrevState = 0;
+    signed int rotation = 0;
     signed int rotationVariable = 0;
     int saveRotationVar = 0;
     uint8_t stateTransition = 0;
-    int row;
-    int knobIdx = 0;
 };
 
 #endif

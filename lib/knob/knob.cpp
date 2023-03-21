@@ -10,43 +10,41 @@ void Knob::updateRotation(volatile uint8_t keyArray[]) volatile {
     case 0: 
       row = 4;
       rotationCurrState = keyArray[row];
-      stateTransition = (rotationPrevState << 2) | rotationCurrState;
+      stateTransition = (rotationPrevState & 0b1100) | (rotationCurrState >> 2);
       break;
     case 1: 
       row = 4;
       rotationCurrState = keyArray[row];
-      stateTransition = (rotationPrevState & 0b1100) | (rotationCurrState >> 2);
+      stateTransition = ((rotationPrevState & 0b11) << 2) | rotationCurrState;
       break;
     case 2: 
       row = 3;
       rotationCurrState = keyArray[row];
-      stateTransition = (rotationPrevState << 2) | rotationCurrState;
+      stateTransition = (rotationPrevState & 0b1100) | (rotationCurrState >> 2);
       break;
     case 3: 
       row = 3;
       rotationCurrState = keyArray[row];
-      stateTransition = (rotationPrevState & 0b1100) | (rotationCurrState >> 2);
+      stateTransition = ((rotationPrevState & 0b11) << 2) | rotationCurrState;
       break;
   }
 
-  // Serial.println(stateTransition, BIN);
-
   switch (stateTransition) {
     case 0b0001:
-      rotationVariable = -1;
-      Serial.println("Anti-clockwise!!");
+      rotationVariable = 1;
+      Serial.println("Clockwise!!");
       break;
     case 0b1110:
+      rotationVariable = 1;
+      Serial.println("Clockwise!!");
+      break;
+    case 0b1011:
       rotationVariable = -1;
       Serial.println("Anti-clockwise!!");
       break;
-    case 0b1011:
-      rotationVariable = 1;
-      Serial.println("Clockwise!!");
-      break;
     case 0b0100:
-      rotationVariable = 1;
-      Serial.println("Clockwise!!");
+      rotationVariable = -1;
+      Serial.println("Anti-clockwise!!");
       break;
     case 0b0011:
     case 0b0110:
