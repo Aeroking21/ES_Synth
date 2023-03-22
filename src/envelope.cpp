@@ -214,7 +214,7 @@ double envelope(double tA, double tD, double maxAmplitude, double tR,double ks){
 
 void sampleISR() {
   i+=1;
-  
+  int localT = t;
   //Serial.println("Try here");
   static uint32_t phaseAcc = 0;
   phaseAcc += currentStepSize;
@@ -228,16 +228,16 @@ void sampleISR() {
   Vout = Vout >> (8 - knob3Rotation);
   if(currentStepSize != 0){
     if(i > 2500){
-      t+=1;
+      localT+=1;
       i = 0;
     }
     if(i > 5000){
       //t+=1;
-      Serial.println(envelope(8.0, 8.0,255.0, 8.0, 200.0));
+      //Serial.println(envelope(8.0, 8.0,255.0, 8.0, 200.0));
       //i = 0;
       
     }
-    
+    __atomic_store_n(&t, localT, __ATOMIC_RELAXED);
   }
  // Serial.println(envelope(4, 4,8, 2, 4, 2));
   //xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
@@ -311,6 +311,7 @@ void setRows(uint8_t rowIdx){
 void scanKeysTask(void * pvParameters) {
 
   static uint32_t localCurrentStepSize = 0;
+  int localT=t;
   static signed int localknob3Rotation = 8;
   const TickType_t xFrequency = 30/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
@@ -344,7 +345,7 @@ void scanKeysTask(void * pvParameters) {
     int noteIndex = ~key_pressed & 0xfff;
   if(noteIndex == 0){
     if(off == false){
-      t = 0;
+      localT = 0;
     }
     off = true;
   }
@@ -358,7 +359,7 @@ void scanKeysTask(void * pvParameters) {
         }
         else{
           localCurrentStepSize = 0;        
-          t = 0;
+          localT = 0;
           i = 0;
         }
         
@@ -407,7 +408,7 @@ void scanKeysTask(void * pvParameters) {
     }
     knob3.updateRotation(keyArray);
     localknob3Rotation = knob3.getRotation();
-    
+    __atomic_store_n(&t, localT, __ATOMIC_RELAXED);
     __atomic_store_n(&knob3Rotation, localknob3Rotation, __ATOMIC_RELAXED);
     __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
   }
