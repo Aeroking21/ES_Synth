@@ -32,26 +32,21 @@ void Knob::updateRotation(volatile uint8_t keyArray[]) volatile {
   switch (stateTransition) {
     case 0b0001:
       rotationVariable = 1;
-      Serial.println("Clockwise!!");
       break;
     case 0b1110:
       rotationVariable = 1;
-      Serial.println("Clockwise!!");
       break;
     case 0b1011:
       rotationVariable = -1;
-      Serial.println("Anti-clockwise!!");
       break;
     case 0b0100:
       rotationVariable = -1;
-      Serial.println("Anti-clockwise!!");
       break;
     case 0b0011:
     case 0b0110:
     case 0b1001:
     case 0b1100:
       rotationVariable = saveRotationVar;
-      Serial.println("Impossible!!");
       break;
     default: rotationVariable = 0;
   }
