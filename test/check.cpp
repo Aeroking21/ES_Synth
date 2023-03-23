@@ -10,6 +10,7 @@
 #include <wavestype.h>
 #include <variables.h>
 
+
 uint32_t shiftIdxForOctave (int octave, int keyboardPositionIdx, uint32_t phase)
 {
   int shift = octave + keyboardPositionIdx - 4;
@@ -53,7 +54,6 @@ void sampleISR() {
         Vout = Vout >> (8 - VolumeRotation);
         analogWrite(OUTR_PIN, (Vout + 128));
       #else
-        
         static uint32_t phaseAcc = 0;
         phaseAcc += shiftIdxForOctave(octave, keyboardPositionIdx, currentStepSize);
 
@@ -63,9 +63,8 @@ void sampleISR() {
         analogWrite(OUTR_PIN, Vout + 128);
       #endif
     }
-    else { // Sine Wave
-
-      // Idx += sineIdxAcc;
+    else // Sine Wave
+    { 
       Idx += shiftIdxForOctave(octave, keyboardPositionIdx, sineIdxAcc);
     
       if (Idx > TABLE_SIZE) Idx = 0;
@@ -167,7 +166,6 @@ void scanKeysTask(void * pvParameters)
   static signed int localVolumeRotation = 4;
   static signed int localWavetypeRotation = 0;
   static signed int localOctaveRotation = 4;
-  static bool localModeSwitch = 0;
   
   while (1) {
     vTaskDelayUntil( &xLastWakeTime, xFrequency );
@@ -182,17 +180,18 @@ void scanKeysTask(void * pvParameters)
 
     Volume.updateRotation(localKeyArray);
     WaveType.updateRotation(localKeyArray);
-    Mode.updateSwitch(localKeyArray);
 
     localVolumeRotation = Volume.getRotation();
     localWavetypeRotation = WaveType.getRotation();
-    localModeSwitch = Mode.getSwitch();
 
     if (keyboardMode == RECEIVER) 
     {
       Octave.updateRotation(localKeyArray);
       localOctaveRotation = Octave.getRotation();
     }
+
+    int eastDetect = localKeyArray[6] & 0x1;
+    int westDetect = localKeyArray[5] & 0x1;
 
     int detectKeyOneHot = keyPressed & 0xfff;
     int exponent = 0;
@@ -201,6 +200,7 @@ void scanKeysTask(void * pvParameters)
       detectKeyOneHot >>= 1;
       exponent++;
     }
+
     #ifdef POLYPHONY
 
     uint32_t notesPressed[8] = {128, 128, 128, 128, 128, 128, 128, 128};
@@ -275,7 +275,6 @@ void scanKeysTask(void * pvParameters)
           octave = localOctaveRotation ;
           currentStepSize = stepSizes[exponent-1];   
           sineIdxAcc = sineLookUpAcc[exponent-1];  
-        }
       }            
       keyboardPositionIdx = 0; 
     }
@@ -300,14 +299,15 @@ void scanKeysTask(void * pvParameters)
       
       xQueueSend(msgOutQ, TX_Message, portMAX_DELAY);
     }
-    prevKeyPressed = keyPressed;
-
-    #endif
     
-    __atomic_store_n(&ModeSwitch, localModeSwitch, __ATOMIC_RELAXED);
+    #endif
+
+    prevKeyPressed = keyPressed;
+    
     __atomic_store_n(&OctaveRotation, localOctaveRotation, __ATOMIC_RELAXED);
     __atomic_store_n(&VolumeRotation, localVolumeRotation, __ATOMIC_RELAXED);
     __atomic_store_n(&WavetypeRotation, localWavetypeRotation, __ATOMIC_RELAXED);
+    }
   }
 }
 
@@ -332,8 +332,10 @@ void displayUpdateTask(void * pvParameters)
     uint32_t keyPressed = ((~localKeyArray[2] & 0xf) << 8) | ((~localKeyArray[1] & 0xf) << 4) | (~localKeyArray[0] & 0xf);
 
     u8g2.clearBuffer();      
+    u8g2.setCursor(2,10);
 
     int detectKeyOneHot = keyPressed & 0xfff;
+
     int exponent = 0;
     
     while (detectKeyOneHot >= 1) {
@@ -342,21 +344,17 @@ void displayUpdateTask(void * pvParameters)
     }
 
     if (exponent != 0) {
-      u8g2.setFont(u8g2_font_ncenB08_tr);
-      u8g2.setCursor(2,10);
       u8g2.print(keyOrder[exponent-1]); 
     }
 
     if (keyboardMode == SENDER)
     {
-      u8g2.setFont(u8g2_font_ncenB08_tr);
-      u8g2.setCursor(90,10);
+      u8g2.setCursor(90,20);
       u8g2.print("Sender");
     }
     else if (singleKeyboard)
     {
-      u8g2.setFont(u8g2_font_ncenB08_tr);
-      u8g2.setCursor(90,10);
+      u8g2.setCursor(80,20);
       u8g2.print("Single");
     }
     if (keyboardMode == RECEIVER)
@@ -388,21 +386,13 @@ void displayUpdateTask(void * pvParameters)
       u8g2.setCursor(79,20);
       u8g2.print("Oct.");
 
-      if (!ModeSwitch){
-        u8g2.setFont(u8g2_font_pressstart2p_8u);
-        u8g2.drawGlyph(118,28,77);
-      }
-      else {
-        u8g2.setFont(u8g2_font_iconquadpix_m_all);
-        u8g2.drawGlyph(116,30,86);
-      }
+      u8g2.setFont(u8g2_font_pressstart2p_8u);
+      u8g2.drawGlyph(120,28,77);
 
       uint8_t localRX_Message[8];
       xSemaphoreTake(RX_MessageMutex, portMAX_DELAY);
       memcpy(&localRX_Message, (void*) &RX_Message, 8);
       xSemaphoreGive(RX_MessageMutex);
-      
-      u8g2.setFont(u8g2_font_ncenB08_tr); 
       u8g2.setCursor(90,10);
       u8g2.print((char) localRX_Message[0]);
       u8g2.print(localRX_Message[1]);
@@ -432,7 +422,7 @@ void decodeTask(void * pvParameters) {
   #endif
 
   uint8_t messageIn[8] = {};
-  
+
   while (1) {
 
     if (keyboardMode == RECEIVER && !singleKeyboard)
@@ -512,10 +502,8 @@ void decodeTask(void * pvParameters) {
         prevMessageIn[0] = messageIn[0]; 
         prevMessageIn[1] = messageIn[1];   
         prevMessageIn[2] = messageIn[2];  
-
         #endif
       }
-    
     }    
   }
 }
@@ -551,17 +539,23 @@ void checkKeyboardandSetMode()
   
   int eastDetect = (~localKeyArray[6] >> 3) & 1;
   int westDetect = (~localKeyArray[5] >> 3) & 1;
-  // Serial.println(westDetect);
-  // Serial.println(eastDetect);
   singleKeyboard = !westDetect & !eastDetect;
+
   if (singleKeyboard) keyboardMode = RECEIVER;
-  if (!singleKeyboard && westDetect && !eastDetect) {
-    keyboardMode = SENDER;
-    keyboardPositionIdx = 1;
-  }
-  else if (!singleKeyboard && eastDetect && !westDetect) {
-    keyboardMode = RECEIVER;
-    keyboardPositionIdx = 0;
+  else 
+  {
+    if (!westDetect && eastDetect) {
+      keyboardMode = RECEIVER;
+      keyboardPositionIdx = 0;
+    }
+    // else if (eastDetect && westDetect) {
+    //   keyboardMode = SENDER;
+    //   keyboardPositionIdx = 1;
+    // }
+    else if (westDetect && !eastDetect){
+      keyboardMode = SENDER;
+      keyboardPositionIdx = 1;
+    }
   }
 }
 
@@ -705,5 +699,4 @@ void setup()
 }
 
 void loop() {
-  // checkKeyboardandSetMode();
 }

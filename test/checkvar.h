@@ -18,11 +18,13 @@
 // For keyboard modes
 bool singleKeyboard = true;
 bool keyboardMode = RECEIVER;
-bool echo = false;
 volatile int keyboardPositionIdx = 0;
-int Idx = 0;
 int octave = 4;
-int activeNoteCount = 0;
+int Idx = 0;
+uint32_t prevKeyPressed = 0;
+uint32_t prevNotesPressedOneHot = 0;
+uint8_t prevMessageIn[8] = {};
+// int activeNoteCount = 0;
 
 // Polyphony setting
 const uint8_t MAX_KEYS_PLAYED_TGT = 8;
@@ -30,14 +32,14 @@ const uint8_t MAX_KEYS_PLAYED_TGT = 8;
 Knob WaveType(1, 0, 0, 1);
 Knob Volume(0, 4, 0, 8);
 Knob Octave(2, 4, 3, 5);
-Knob Mode(3, 0, 0, 0);
+
 
 // -------------------- VOLATILE --------------------
 #ifdef POLYPHONY
 volatile uint32_t currentStepSize[MAX_KEYS_PLAYED_TGT];
 std::vector<uint16_t> activeNotes;
 #else
-volatile uint32_t currentStepSize;
+volatile uint32_t currentStepSize = 0;
 #endif
 volatile uint8_t keyArray[7];
 volatile uint32_t sineAcc = 0;
@@ -46,11 +48,9 @@ volatile signed int rotationVariable = 0;
 volatile signed int WavetypeRotation = 8;
 volatile signed int VolumeRotation = 4;
 volatile signed int OctaveRotation = 4;
-volatile bool ModeSwitch = 0;
 volatile uint8_t RX_Message[8] = {0};
 uint32_t prevKeyPressed = 0;
 uint8_t prevMessageIn[8] = {};
-
 
 // ----------------- DO NOT CHANGE ------------------
 

@@ -56,7 +56,46 @@ void Knob::updateRotation(volatile uint8_t keyArray[]) volatile {
   rotation += rotationVariable;
 
   rotation = std::max(std::min(rotation, upperLimit), lowerLimit);
-  // Serial.println(rotation);
+}
+
+void Knob::updateSwitch(volatile uint8_t keyArray[]) volatile 
+{
+  int onOff = 0;
+  int state = 0;
+  
+  switch (knobIdx) {
+    case 0: 
+      row = 6;
+      onOff = keyArray[row] & 1;
+      stateTransition = prevOnOff << 1 | onOff;
+      break;
+    case 1: 
+      row = 6;
+      onOff = (keyArray[row] >> 1) & 1;
+      stateTransition = prevOnOff << 1 | onOff;
+      break;
+    case 2: 
+      row = 5;
+      onOff = keyArray[row] & 1;
+      stateTransition = prevOnOff << 1 | onOff;
+      break;
+    case 3: 
+      row = 5;
+      onOff = (keyArray[row] >> 1) & 1;
+      stateTransition = prevOnOff << 1 | onOff;
+      break;
+  }
+
+  switch (stateTransition) {
+    case 0b00: state = 0; break;
+    case 0b01: state = 1; break;
+    case 0b11: state = 1; break;
+    case 0b10: state = 2; break;
+    default: state = 0; break;
+  }
+  if (state == 2) pressSwitch = !pressSwitch;
+
+  prevOnOff = onOff;
 }
 
 void Knob::setLimits(int newLowerLimit, int newUpperLimit) {
@@ -68,5 +107,9 @@ void Knob::setLimits(int newLowerLimit, int newUpperLimit) {
 
 signed int Knob::getRotation() volatile {
   return rotation;
+}
+
+signed int Knob::getSwitch() volatile {
+  return pressSwitch;
 }
 

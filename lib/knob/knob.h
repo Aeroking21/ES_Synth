@@ -12,12 +12,16 @@ class Knob {
       upperLimit(upperLimit) {}
 
     void updateRotation(volatile uint8_t keyArray[]) volatile;
+    void updateSwitch(volatile uint8_t keyArray[]) volatile;
     void setLimits(int newLowerLimit, int newUpperLimit); 
     signed int getRotation() volatile;
+    signed int getSwitch() volatile;
 
   private:
     int row = 0;
     int knobIdx = 0;
+    int pressSwitch = 0;
+    int prevOnOff = 0;
     int lowerLimit = 0;
     int upperLimit = 8;
     int rotationCurrState = 0;
