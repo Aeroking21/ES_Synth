@@ -118,9 +118,9 @@ All data and other resources that are accessed by multiple tasks is protected ag
 
 Red arrow represents blocking dependencies whereas green represents non-blocking dependencies.
 
-![For single keyboard](/diagrams/dependencygraph1.pdf)
+<img src="./diagrams/dependencygraph1.pdf" alt="Single Keyboard" width="550">
 
-![For multiply keyboard](/diagrams/dependencygraph2.pdf)
+<img src="./diagrams/dependencygraph2.pdf" alt="Multiply Keyboards" width="550">
 
 <!--
 All dependencies between the tasks of our program can be visualized in a dependency graph:
