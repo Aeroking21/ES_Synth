@@ -9,12 +9,6 @@
 #include <wavestype.h>
 #include <variables.h>
 
-int t = 0;
-int i = 0;
-bool keyReleased = false;
-bool off = false;
-double currentAmplitude;
-
 double envelope(double tA, double tD, double maxAmplitude, double tR, double ks){
   double kA = maxAmplitude/tA;
   double kD = (maxAmplitude-ks)/(tD);
@@ -217,6 +211,7 @@ void scanKeysTask(void * pvParameters)
   uint8_t localKeyArray[7];
 
   static uint32_t localKeyboardPositionIdx;
+  static uint32_t localCurrentStepSize = 0;
   static signed int localVolumeRotation = 4;
   static signed int localWavetypeRotation = 0;
   static signed int localOctaveRotation = 4;
@@ -332,7 +327,7 @@ void scanKeysTask(void * pvParameters)
           sineIdxAcc = 0;
           if (!off) t = 0;
           off = true;
-          currentStepSize = 0;
+          localCurrentStepSize = 0;
           t = 0;
           i = 0;
         } 
@@ -340,11 +335,11 @@ void scanKeysTask(void * pvParameters)
         {
           off = false;
           octave = localOctaveRotation ;
-          currentStepSize = stepSizes[exponent-1];   
+          localCurrentStepSize = stepSizes[exponent-1];   
           sineIdxAcc = sineLookUpAcc[exponent-1];  
         }
       }            
-      keyboardPositionIdx = 0; 
+      localKeyboardPositionIdx = 0; 
     }
     else if (keyboardMode == SENDER && !singleKeyboard) 
     {
@@ -376,7 +371,8 @@ void scanKeysTask(void * pvParameters)
     __atomic_store_n(&ModeSwitch, localModeSwitch, __ATOMIC_RELAXED);
     __atomic_store_n(&OctaveRotation, localOctaveRotation, __ATOMIC_RELAXED);
     __atomic_store_n(&VolumeRotation, localVolumeRotation, __ATOMIC_RELAXED);
-    __atomic_store_n(&WavetypeRotation, localWavetypeRotation, __ATOMIC_RELAXED);\
+    __atomic_store_n(&WavetypeRotation, localWavetypeRotation, __ATOMIC_RELAXED);
+    __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
     
     // UBaseType_t ux = uxTaskGetStackHighWaterMark( NULL );
     // Serial.print("stack: ");
@@ -418,6 +414,13 @@ void displayUpdateTask(void * pvParameters)
     xSemaphoreTake(RX_MessageMutex, portMAX_DELAY);
     memcpy(&localRX_Message, (void*) &RX_Message, 8);
     xSemaphoreGive(RX_MessageMutex);
+
+    __atomic_load_n(&EchoSwitch, __ATOMIC_RELAXED);
+    __atomic_load_n(&EnvelopeSwitch, __ATOMIC_RELAXED);
+    __atomic_load_n(&ModeSwitch, __ATOMIC_RELAXED);
+    __atomic_load_n(&VolumeRotation, __ATOMIC_RELAXED);
+    __atomic_load_n(&OctaveRotation, __ATOMIC_RELAXED);
+    __atomic_load_n(&WavetypeRotation, __ATOMIC_RELAXED);
 
     if (keyboardMode == SENDER)
     {
@@ -528,6 +531,7 @@ void displayUpdateTask(void * pvParameters)
 
 void decodeTask(void * pvParameters) {
   uint32_t ID = 0x123;
+  static uint32_t localCurrentStepSize = 0;
 
   #ifdef POLYPHONY
   int32_t localCurrentStepSize[MAX_KEYS_PLAYED_TGT] = {};
@@ -549,10 +553,9 @@ void decodeTask(void * pvParameters) {
         memcpy((void*)RX_Message, &messageIn, 8);
         xSemaphoreGive(RX_MessageMutex);
 
+        __atomic_load_n(&OctaveRotation, __ATOMIC_RELAXED);
+
         #ifdef POLYPHONY
-        xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
-        memcpy(&localKeyArray, (void*) &keyArray, 7);
-        xSemaphoreGive(keyArrayMutex);
         
         xSemaphoreTake(stepSizeMutex, portMAX_DELAY);
         if (keyboardMode == RECEIVER) 
@@ -574,44 +577,44 @@ void decodeTask(void * pvParameters) {
           //     break;
           //   }
           // }
-          // if (messageIn[0] == 'R')
-          // {
-          //   for (int i = 0; i < MAX_KEYS_PLAYED_TGT; i++) 
-          //   {
-          //     if (notesPressed[i] == 128) currentStepSize[i] = 0;
-          //   }
-          // }
-          // else if (messageIn[0] == 'P')
-          // {
-          //   int32_t localCurrentStepSize = 0;
-          //   int activeNotes;
+          if (messageIn[0] == 'R')
+          {
+            for (int i = 0; i < MAX_KEYS_PLAYED_TGT; i++) 
+            {
+              if (notesPressed[i] == 128) currentStepSize[i] = 0;
+            }
+          }
+          else if (messageIn[0] == 'P')
+          {
+            int32_t localCurrentStepSize = 0;
+            int activeNotes;
         
-          //   for (int i = 0; i < MAX_KEYS_PLAYED_TGT; i++) 
-          //   {
-          //     if (notesPressed[i] != 128) 
-          //     {
-          //       localCurrentStepSize = stepSizes[notesPressed[i]];
-          //       currentStepSize[i] = localCurrentStepSize;
-          //     } 
-          //     else {
-          //       currentStepSize[i] = 0;
-          //     }
-          //   }
-          // }
+            for (int i = 0; i < MAX_KEYS_PLAYED_TGT; i++) 
+            {
+              if (notesPressed[i] != 128) 
+              {
+                localCurrentStepSize = stepSizes[notesPressed[i]];
+                currentStepSize[i] = localCurrentStepSize;
+              } 
+              else {
+                currentStepSize[i] = 0;
+              }
+            }
+          }
         }
         xSemaphoreGive(stepSizeMutex);
         #else
         if ((messageIn[0] != prevMessageIn[0]) || (messageIn[2] != prevMessageIn[2]) || (messageIn[1] != prevMessageIn[1]))
         {
           if (messageIn[0] == 'R'){
-            currentStepSize = 0;
+            localCurrentStepSize = 0;
             sineIdxAcc = 0;
           }
           else 
           {
             keyboardPositionIdx = messageIn[3];
             octave = OctaveRotation + keyboardPositionIdx;
-            currentStepSize = stepSizes[messageIn[2]];  
+            localCurrentStepSize = stepSizes[messageIn[2]];  
             sineIdxAcc = sineLookUpAcc[messageIn[2]];  
           }
         }
@@ -621,7 +624,7 @@ void decodeTask(void * pvParameters) {
 
         #endif
       }
-    
+      __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
     }        
     // UBaseType_t ux = uxTaskGetStackHighWaterMark( NULL );
     // Serial.print("stack: ");
@@ -755,14 +758,14 @@ void setup()
   Serial.print("Keyboard Position : ");
   Serial.println(keyboardPositionIdx);
 
-  TaskHandle_t localCurrentStepSize = NULL;
+  TaskHandle_t scanKeysTaskHandle = NULL;
   xTaskCreate(
   scanKeysTask,		          /* Function that implements the task */
   "scanKeys",		            /* Text name for the task */
   64,      		              /* Stack size in words, not bytes */
   NULL,			                /* Parameter passed into the task */
-  4,			                  /* Task priority */
-  &localCurrentStepSize );	/* Pointer to store the task handle */
+  3,			                  /* Task priority */
+  &scanKeysTaskHandle );	/* Pointer to store the task handle */
  
   TaskHandle_t displayTask = NULL;
   xTaskCreate(
@@ -770,7 +773,7 @@ void setup()
   "displayTasks",		
   256,      		
   NULL,			
-  2,			
+  1,			
   &displayTask );	
 
   if (keyboardMode == RECEIVER && !singleKeyboard) {
@@ -780,7 +783,7 @@ void setup()
     "decodeTask",	
     64,      		 
     NULL,			
-    4,			
+    2,			
     &decodeTaskHandle );	
   }
   
@@ -791,7 +794,7 @@ void setup()
     "CAN_TX_Task",		
     64,      		
     NULL,		
-    3,			
+    2,			
     &TXTask );	
   }
 
