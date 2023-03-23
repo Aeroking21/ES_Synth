@@ -15,57 +15,87 @@
 
 **Threads:**
 
-- `scanInputsTask`: Scans `keyArray[row]` to check, and then assigns the current step size
-- `displayUpdateTask`:
-- `decodeTask`:
-- `CAN_TX_Task`:
+- `scanKeysTask`, Priority: 4
+
+  - Scans `keyArray[row]` to check the keys pressed for row 0 to 2, bits manipulation was used to concatenate them to form a single variable; other rows for Knobs (Volume, WaveType, Octave, Mode, Envelope, Echo) rotation and switch detection
+
+  - If `keyboardMode == RECEIVER`, updates the `phaseAcc` (depending on wavetypes)
+
+  - If `keyboardMode == SENDER`, transmits message in the format given in the lab with additional bit `TX_Message[3]` as the keyboard position index
+
+- `displayUpdateTask`, Priority: 2
+
+  - Displays key pressed, volume, wave type, octave, mode on main display -> `RECEIVER`, message transmitted when `!singleKeyboard`
+
+- `decodeTask`: Priority: 4 (only applies to `RECEIVER`)
+
+  - If messages received changes, decodes the message and updates `phaseAcc` (depending on wavetypes), keyboard position and octave
+
+- `CAN_TX_Task`: Transmits message
 
 **Interrupts:**
 
-- `sampleISR`:
-- `CAN_RX_ISR`:
-- `CAN_TX_ISR`:
+- `sampleISR`: With frequency of `22000Hz`, updates `Vout` and writes to the pin for the speaker output
+
+- `CAN_RX_ISR`: Receives message from FIFO (`msgInQ`)
+- `CAN_TX_ISR`: Transmit message from FIFO (`msgOutQ`)
 
 </br>
 
 ## Charaterisation of Tasks
+
+The theoretical minimum initiation interval and measured worst execution time for each tasks are tabulated below.
+
+| Task                | Priority (Low to High) | Minimum Initiation Interval (ms) | Worst-case Execution Time (ms) | Latency (ms) | CPU Utilisation (%) |
+| :------------------ | :--------------------: | :------------------------------: | :----------------------------: | :----------: | :-----------------: |
+| `displayUpdateTask` |           1            |               100                |                                |              |                     |
+| `decodeTask`        |      3 (RECEIVER)      |               25.2               |                                |              |                     |
+| `CAN_TX_Task`       |       2 (SENDER)       |                                  |                                |              |                     |
+| `scanKeyTask`       |           3            |                20                |                                |              |                     |
+| `sampleISR`         |       Interrupt        |              0.0455              |                                |              |                     |
+| `CAN_RX_ISR`        |       Interrupt        |                                  |                                |              |                     |
+| `CAN_TX_ISR`        |       Interrupt        |                                  |                                |              |                     |
+|                     |                        |                                  |           **Total**            |              |                     |
 
 </br>
 
 ## Real Time Critical Analysis
 
 <!-- A critical time analysis is crucial to predict whether all the tasks will be executed within the deadlines of a system.
-To do this, it is necessary to analyse the total latency of the system by computing the execution times for the worst case scenario possible and compare it to the latency of the lowest-priority
-<!-- task. -->
-<!--
-| Task                         | Priority (Low to High) | Minimum Initiation Interval (ms) <img src="https://render.githubusercontent.com/render/math?math=\tau_i" width = "18"> | Worst-case Execution Time (ms) <img src="https://render.githubusercontent.com/render/math?math=T_i" width = "18"> | <img src="https://render.githubusercontent.com/render/math?math=\left[\frac{\tau_n}{\tau_i} \right] T_i" width = "60"> (ms) | CPU Utilisation (%) |
-| :--------------------------- | :--------------------: | :--------------------------------------------------------------------------------------------------------------------: | :---------------------------------------------------------------------------------------------------------------: | :-------------------------------------------------------------------------------------------------------------------------: | :-----------------: |
-| `displayUpdateTask`          |           1            |                                                          100                                                           |                                                      16.334                                                       |                                                           16.334                                                            |       16.334        |
-| `decodeTask`                 |           2            |                                                          25.2                                                          |                                                      0.0113                                                       |                                                            0.045                                                            |        0.045        |
-| `CAN_TX_Task` & `CAN_TX_ISR` |           3            |                                                           60                                                           |                                                       0.012                                                       |                                                            0.020                                                            |        0.020        |
-| `scanInputTask`              |           4            |                                                           20                                                           |                                                      0.3007                                                       |                                                            1.504                                                            |        1.504        |
-| `sampleISR`                  |       Interrupt        |                                                        0.04545                                                         |                                                      0.0097                                                       |                                                           21.342                                                            |       21.342        |
-| `CAN_RX_ISR`                 |       Interrupt        |                                                          0.7                                                           |                                                      0.00319                                                      |                                                            0.456                                                            |        0.456        |
-|                              |                        |                                                                                                                        |                                                     **Total**                                                     |                                                           39.700                                                            |       39.700        | -->
+To do this, it is necessary to analyse the total latency of the system by computing the execution times for the worst case scenario possible and compare it to the latency of the lowest-priority task. -->
 
 <!-- The total latency obtained is 39.7ms, which is clearly less than the latency of our lowest-priority task `displayUpdateTask`: 100ms. Therefore none of the deadlines will be missed and our schedule will work without failures as all the tasks will be executed in the correct time frame.
 
 _Note: The execution times of `CAN_TX_Task` and of `CAN_TX_ISR` were measured together as the former depends on the latter when simulating its worst-case scenario (a full queue of outgoing messages)._
 
-The total CPU utilisation of our program is around **40%**. -->
+The total CPU utilisation of our program is around **40%**.  -->
 
 </br>
 
 ## Shared Resources
 
-### Description of shared resources
+All data and other resources that are accessed by multiple tasks is protected against errors caused by simultaneous access.
 
-The shared resources of our program are protected to guarantee safe access and synchronisation using:
+- 4 Mutexes - Used to protect access by multiple tasks
 
-- ?? Mutexes
-- ?? Queues
-- ?? Semaphore
-- Multiple atomic operations
+  - `keyArrayMutex`: shared by thread `scanKeysTask` & `displayUpdateTask`
+  - `RX_MessageMutex`: shared by thread `decodeTask` & `displayUpdateTask`
+  - `keyboardPositionIdxMutex`: 
+  - `stepSizeMutex` (Polyphony): array of multiple bytes
+
+- 2 Queues
+
+  - `msgInQ`:
+  - `msgOutQ`:
+
+- Atomic operations
+
+  - `EchoSwitch`
+  - `EnvelopeSwitch`
+  - `ModeSwitch`
+  - `VolumeRotation`
+  - `OctaveRotation`
+  - `WavetypeRotation`
 
 <!-- 1. The `keyArray`, which represents the state of all the input pins to the STM32. It is protected by the `keyArrayMutex` mutex that is used to write to it, or read to it in short bursts in order to minimize its locking time.
 
