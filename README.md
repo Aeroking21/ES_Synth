@@ -1,44 +1,43 @@
-<!-- # Documentation (Team Tokyo)
+# Documentation (Team Tokyo)
 
 ## Table of content
 
-- [Identification of Tasks](./README.md#description-of-tasks)
-- [Charaterisation of Tasks](./README.md#description-of-tasks)
-- [Critical Instant Analysis](./README.md#real-time-critical-analysis)
-- [Total CPU tilisation](./README.md#shared-resources)
-- [Inter-task Blocking Dependencies](./README.md#shared-resources)
+- [Identification of Tasks](./README.md#identification-of-tasks)
+- [Charaterisation of Tasks](./README.md#charaterisation-of-tasks)
+- [Critical Instant Analysis and Total CPU Utilisation](./README.md#real-time-critical-analysis)
+- [Identification of shared data structures](./README.md#shared-resources)
+- [Inter-task Blocking Dependencies](./README.md#dependencies)
 - [Advanced Features](./README.md#advanced-features)
 
 </br>
 
-## Description of Tasks
+## Identification of Tasks
 
 **Threads:**
 
-- `scanInputsTask`: Scans `keyArray[row]` to check, and then assigns the current step size (or current notes playing, depending on the waveform mode of the board). The rotation of the knobs is then updated (and the relevant CAN messages are sent to other boards), and the handshaking checks are performed to analyse the relative position of the boards.
-
-- `displayUpdateTask`: This thread displays the keys being played, as well as the volume, octave and waveform mode of the board. It also displays whether the board is a Receiver or a Sender, as well as its position in the multi-board configuration.
-
-- `decodeTask`: This thread analyses the last received message from the CAN Bus and updates the current step size coming from other boards (or current notes playing, depending on the waveform mode of the board) and synchronizes the rotation of the knobs of Sender boards. It also detects the status messages coming from a potential middle board (used for Handshaking, for more details see [Advanced Features](./README.md#advanced-features)).
-
-- `CAN_TX_Task`: This thread obtains the messages from the Outgoing Messages queue (`msgOutQ`), and if the output CAN slots of the micro-controller are free, sends them through the CAN bus for communication with other boards.
+- `scanInputsTask`: Scans `keyArray[row]` to check, and then assigns the current step size
+- `displayUpdateTask`:
+- `decodeTask`:
+- `CAN_TX_Task`:
 
 **Interrupts:**
 
-- `sampleISR`: This interrupt outputs a voltage to the speaker module at a rate of **22000Hz** to generate the desired waveform at the frequencies of the notes being played.
+- `sampleISR`:
+- `CAN_RX_ISR`:
+- `CAN_TX_ISR`:
 
-- `CAN_RX_ISR`: This interrupt gets called every time a CAN message is **received** through the CAN Bus. It places the incoming message onto the Incoming Messages queue `msgInQ`.
+</br>
 
-- `CAN_TX_ISR`: This interrupt gets called every time a CAN message is **sent** through the CAN Bus. It is used to keep track of the number of free output CAN slots that can be used by the `CAN_TX_Task` thread, this is done through a counting Semaphore.
+## Charaterisation of Tasks
 
 </br>
 
 ## Real Time Critical Analysis
 
-A critical time analysis is crucial to predict whether all the tasks will be executed within the deadlines of a system.
+<!-- A critical time analysis is crucial to predict whether all the tasks will be executed within the deadlines of a system.
 To do this, it is necessary to analyse the total latency of the system by computing the execution times for the worst case scenario possible and compare it to the latency of the lowest-priority
-task.
-
+<!-- task. -->
+<!--
 | Task                         | Priority (Low to High) | Minimum Initiation Interval (ms) <img src="https://render.githubusercontent.com/render/math?math=\tau_i" width = "18"> | Worst-case Execution Time (ms) <img src="https://render.githubusercontent.com/render/math?math=T_i" width = "18"> | <img src="https://render.githubusercontent.com/render/math?math=\left[\frac{\tau_n}{\tau_i} \right] T_i" width = "60"> (ms) | CPU Utilisation (%) |
 | :--------------------------- | :--------------------: | :--------------------------------------------------------------------------------------------------------------------: | :---------------------------------------------------------------------------------------------------------------: | :-------------------------------------------------------------------------------------------------------------------------: | :-----------------: |
 | `displayUpdateTask`          |           1            |                                                          100                                                           |                                                      16.334                                                       |                                                           16.334                                                            |       16.334        |
@@ -47,13 +46,13 @@ task.
 | `scanInputTask`              |           4            |                                                           20                                                           |                                                      0.3007                                                       |                                                            1.504                                                            |        1.504        |
 | `sampleISR`                  |       Interrupt        |                                                        0.04545                                                         |                                                      0.0097                                                       |                                                           21.342                                                            |       21.342        |
 | `CAN_RX_ISR`                 |       Interrupt        |                                                          0.7                                                           |                                                      0.00319                                                      |                                                            0.456                                                            |        0.456        |
-|                              |                        |                                                                                                                        |                                                     **Total**                                                     |                                                           39.700                                                            |       39.700        |
+|                              |                        |                                                                                                                        |                                                     **Total**                                                     |                                                           39.700                                                            |       39.700        | -->
 
-The total latency obtained is 39.7ms, which is clearly less than the latency of our lowest-priority task `displayUpdateTask`: 100ms. Therefore none of the deadlines will be missed and our schedule will work without failures as all the tasks will be executed in the correct time frame.
+<!-- The total latency obtained is 39.7ms, which is clearly less than the latency of our lowest-priority task `displayUpdateTask`: 100ms. Therefore none of the deadlines will be missed and our schedule will work without failures as all the tasks will be executed in the correct time frame.
 
 _Note: The execution times of `CAN_TX_Task` and of `CAN_TX_ISR` were measured together as the former depends on the latter when simulating its worst-case scenario (a full queue of outgoing messages)._
 
-The total CPU utilisation of our program is around **40%**.
+The total CPU utilisation of our program is around **40%**. -->
 
 </br>
 
@@ -63,12 +62,12 @@ The total CPU utilisation of our program is around **40%**.
 
 The shared resources of our program are protected to guarantee safe access and synchronisation using:
 
-- 2 Mutexes
-- 2 Queues
-- 1 Semaphore
+- ?? Mutexes
+- ?? Queues
+- ?? Semaphore
 - Multiple atomic operations
 
-1. The `keyArray`, which represents the state of all the input pins to the STM32. It is protected by the `keyArrayMutex` mutex that is used to write to it, or read to it in short bursts in order to minimize its locking time.
+<!-- 1. The `keyArray`, which represents the state of all the input pins to the STM32. It is protected by the `keyArrayMutex` mutex that is used to write to it, or read to it in short bursts in order to minimize its locking time.
 
 1. The `keyArray_prev`, which stores the last state of the keyboard keys being pressed, is also protected by the same `keyArrayMutex` mutex.
 
@@ -86,10 +85,12 @@ The shared resources of our program are protected to guarantee safe access and s
 
 1. Several board state variables, namely `isMuted` `isReceiverBoard` `lastMiddleCANRX` and `boardIndex` which are written to using atomic stores. This is once again because they can be accessed in an interrupt, such as `isMuted` in the `sampleISR` interrupt.
 
-1. Multiple objects of custom classes [CAN_Knob](./lib/Knob/can_knob.hpp), [Button](./lib/Button/button.hpp) and [Detect](./lib/Detect/detect.hpp) whose member variables are all written to using atomic operations, as they can be accessed in interrupts, such as `knob3.getRotation()` in the `sampleISR` interrupt.
+1. Multiple objects of custom classes [CAN_Knob](./lib/Knob/can_knob.hpp), [Button](./lib/Button/button.hpp) and [Detect](./lib/Detect/detect.hpp) whose member variables are all written to using atomic operations, as they can be accessed in interrupts, such as `knob3.getRotation()` in the `sampleISR` interrupt. -->
 
-### Dependencies
+## Inter-task Blocking Dependencies
 
+- Graph to be inserted
+<!--
 All dependencies between the tasks of our program can be visualized in a dependency graph:
 
 <img src="./dependency_graph.jpg" alt="Dependency Graph" width="550"/>
@@ -102,13 +103,20 @@ As shown in the graph, the RX and TX queues, respectively `msgInQ` and `msgOutQ`
 
 The dependency between `CAN_TX_Task` and `CAN_TX_ISR` is because of the Counting Semaphore `CAN_TX_Semaphore` that regulates the flow of outgoing messages to the CAN Bus. This is because the STM32 can only load three messages at a time to be sent out to the bus. This semaphore therefore blocks the `CAN_TX_Task` thread until an output slot is free.
 
-As this graph is acyclic (i.e. there are no cycles/loops), this means that there are **no risks of deadlocks** in our program.
+As this graph is acyclic (i.e. there are no cycles/loops), this means that there are **no risks of deadlocks** in our program. -->
 
 </br>
 
 ## Advanced Features
 
-As part of this project, we have implemented several advanced features:
+- Knob class
+- Envelope
+- Button press User Interface
+- Echoes
+- Sine Wave
+- Polyphony
+
+<!-- As part of this project, we have implemented several advanced features:
 
 - A board mode Button (Button of Knob 0) that, when being pressed, sets the current board as Receiver and all other connected boards to be Senders. (_Note: by default all boards are set to be receivers until a specific one is chosen_)
 
