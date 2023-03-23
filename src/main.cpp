@@ -13,16 +13,16 @@
 int Idx = 0;
 
 
-uint32_t shiftIdxForOctave (int keyboardPositionIdx, uint32_t phase)
+uint32_t shiftIdxForOctave (int octave, int keyboardPositionIdx, uint32_t phase)
 {
   // __atomic_load_n(&OctaveRotation, __ATOMIC_RELAXED);
   
-  int shift = OctaveRotation + keyboardPositionIdx - 4;
+  int shift = octave + keyboardPositionIdx - 4;
 
-  if (OctaveRotation + keyboardPositionIdx >= 4) {
+  if (octave + keyboardPositionIdx >= 4) {
     phase = phase << std::abs(shift);
   }
-  else if (4 - OctaveRotation - keyboardPositionIdx < 4) {
+  else if (4 - octave - keyboardPositionIdx < 4) {
     phase = phase >> std::abs(shift);
   }
   return phase;
@@ -61,7 +61,7 @@ void sampleISR() {
       #else
         
         static uint32_t phaseAcc = 0;
-        phaseAcc += shiftIdxForOctave(keyboardPositionIdx, currentStepSize);
+        phaseAcc += shiftIdxForOctave(octave, keyboardPositionIdx, currentStepSize);
 
         int32_t Vout = (phaseAcc >> 24) - 128;
         Vout = Vout >> (8 - VolumeRotation);
@@ -72,7 +72,7 @@ void sampleISR() {
     else { // Sine Wave
 
       // Idx += sineIdxAcc;
-      Idx += shiftIdxForOctave(keyboardPositionIdx, sineIdxAcc);
+      Idx += shiftIdxForOctave(octave, keyboardPositionIdx, sineIdxAcc);
     
       if (Idx > TABLE_SIZE) Idx = 0;
       sineAcc = sineLookUpTable[Idx];
@@ -187,11 +187,15 @@ void scanKeysTask(void * pvParameters)
 
     Volume.updateRotation(localKeyArray);
     WaveType.updateRotation(localKeyArray);
-    Octave.updateRotation(localKeyArray);
 
     localVolumeRotation = Volume.getRotation();
     localWavetypeRotation = WaveType.getRotation();
-    localOctaveRotation = Octave.getRotation();
+
+    if (keyboardMode == RECEIVER) 
+    {
+      Octave.updateRotation(localKeyArray);
+      localOctaveRotation = Octave.getRotation();
+    }
 
     int eastDetect = localKeyArray[6] & 0x1;
     int westDetect = localKeyArray[5] & 0x1;
@@ -262,6 +266,7 @@ void scanKeysTask(void * pvParameters)
         } 
         else
         {
+          octave = localOctaveRotation ;
           currentStepSize = stepSizes[exponent-1];   
           sineIdxAcc = sineLookUpAcc[exponent-1];  
           // Idx += sineIdxAcc;
@@ -491,7 +496,7 @@ void decodeTask(void * pvParameters) {
         }
         xSemaphoreGive(stepSizeMutex);
         #else
-        if ((messageIn[0] != prevMessageIn[0]) || (messageIn[2] != prevMessageIn[2]))
+        if ((messageIn[0] != prevMessageIn[0]) || (messageIn[2] != prevMessageIn[2]) || (messageIn[1] != prevMessageIn[1]))
         {
           if (messageIn[0] == 'R'){
             currentStepSize = 0;
@@ -499,14 +504,16 @@ void decodeTask(void * pvParameters) {
           }
           else 
           {
+            keyboardPositionIdx = messageIn[3];
+            octave = OctaveRotation + keyboardPositionIdx;
             currentStepSize = stepSizes[messageIn[2]];  
             sineIdxAcc = sineLookUpAcc[messageIn[2]];  
           }
         }
         // xSemaphoreTake(keyboardPositionIdxMutex, portMAX_DELAY);
-        // keyboardPositionIdx = messageIn[3];
         // xSemaphoreGive(keyboardPositionIdxMutex);
-        prevMessageIn[0] = messageIn[0];  
+        prevMessageIn[0] = messageIn[0]; 
+        prevMessageIn[1] = messageIn[1];   
         prevMessageIn[2] = messageIn[2];  
         
         // __atomic_store_n(&keyboardPositionIdx, localKeyboardPositionIdx, __ATOMIC_RELAXED);
