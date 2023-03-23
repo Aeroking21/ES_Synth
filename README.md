@@ -4,92 +4,124 @@
 
 - [Identification of Tasks](./README.md#identification-of-tasks)
 - [Charaterisation of Tasks](./README.md#charaterisation-of-tasks)
-- [Critical Instant Analysis and Total CPU Utilisation](./README.md#real-time-critical-analysis)
+- [Critical Instant Analysis](./README.md#real-time-critical-analysis)
+- [Total CPU Utilisation](./README.md#total-cpu-utilisation)
 - [Identification of shared data structures](./README.md#shared-resources)
 - [Inter-task Blocking Dependencies](./README.md#dependencies)
 - [Advanced Features](./README.md#advanced-features)
-
-</br>
+- [User Interface](./README.md#user-interface)
+  </br>
 
 ## Identification of Tasks
 
-**Threads:**
+### Threads:
 
-- `scanInputsTask`: Scans `keyArray[row]` to check, and then assigns the current step size
-- `displayUpdateTask`:
-- `decodeTask`:
-- `CAN_TX_Task`:
+- `scanKeysTask`, Priority: 3
 
-**Interrupts:**
+  - Scans `keyArray[row]` to check the keys pressed for row 0 to 2, bits manipulation was used to concatenate them to form a single variable; other rows for Knobs (Volume, WaveType, Octave, Mode, Envelope, Echo) rotation and switch detection
 
-- `sampleISR`:
-- `CAN_RX_ISR`:
-- `CAN_TX_ISR`:
+  - If `keyboardMode == RECEIVER`, updates the `phaseAcc` (depending on wavetypes)
+
+  - If `keyboardMode == SENDER`, transmits message in the format given in the lab with additional bit `TX_Message[3]` as the keyboard position index
+
+- `displayUpdateTask`, Priority: 1
+
+  - Displays key pressed, volume, wave type, octave, mode on main display -> `RECEIVER`, message transmitted when `!singleKeyboard`
+
+- `decodeTask`: Priority: 2 (only applies to `RECEIVER`)
+
+  - If messages received changes, decodes the message and updates `phaseAcc` (depending on wavetypes), keyboard position and octave
+
+- `CAN_TX_Task`:, Priority: 2 (only applies to `SENDER`) - Transmits message
+
+### Interrupts:
+
+- `sampleISR`: With frequency of `22000Hz`, updates `Vout` and writes to the pin for the speaker output
+
+- `CAN_RX_ISR`: Receives message from FIFO (`msgInQ`)
+- `CAN_TX_ISR`: Transmit message from FIFO (`msgOutQ`)
 
 </br>
 
 ## Charaterisation of Tasks
 
+The theoretical minimum initiation interval and measured worst execution time for each tasks are tabulated below.
+
+| Task                | Priority (Low to High) | Minimum Initiation Interval (ms) | Worst-case Execution Time (ms) | Latency (ms) | CPU Utilisation (%) |
+| :------------------ | :--------------------: | :------------------------------: | :----------------------------: | :----------: | :-----------------: |
+| `displayUpdateTask` |           1            |               100                |                                |              |                     |
+| `decodeTask`        |      3 (RECEIVER)      |               25.2               |                                |              |                     |
+| `CAN_TX_Task`       |       2 (SENDER)       |                                  |                                |              |                     |
+| `scanKeyTask`       |           3            |                20                |                                |              |                     |
+| `sampleISR`         |       Interrupt        |              0.0455              |                                |              |                     |
+| `CAN_RX_ISR`        |       Interrupt        |                                  |                                |              |                     |
+| `CAN_TX_ISR`        |       Interrupt        |                                  |                                |              |                     |
+|                     |                        |                                  |           **Total**            |              |                     |
+
 </br>
+
+## Total CPU Utilisation
+
+### Memory Usage
+
+RAM - 65.8%
+Flash - 28.3%
+
+### Stack Usage for each Thread
+
+- displayUpdate - 128 words (256 allocated)
+- scanKeyTask - 60 words (64 allocated)
+- decodeTask - 61 words (64 allocated)
+- CAN_TX_Task - 44 words (64 allocated)
 
 ## Real Time Critical Analysis
 
 <!-- A critical time analysis is crucial to predict whether all the tasks will be executed within the deadlines of a system.
-To do this, it is necessary to analyse the total latency of the system by computing the execution times for the worst case scenario possible and compare it to the latency of the lowest-priority
-<!-- task. -->
-<!--
-| Task                         | Priority (Low to High) | Minimum Initiation Interval (ms) <img src="https://render.githubusercontent.com/render/math?math=\tau_i" width = "18"> | Worst-case Execution Time (ms) <img src="https://render.githubusercontent.com/render/math?math=T_i" width = "18"> | <img src="https://render.githubusercontent.com/render/math?math=\left[\frac{\tau_n}{\tau_i} \right] T_i" width = "60"> (ms) | CPU Utilisation (%) |
-| :--------------------------- | :--------------------: | :--------------------------------------------------------------------------------------------------------------------: | :---------------------------------------------------------------------------------------------------------------: | :-------------------------------------------------------------------------------------------------------------------------: | :-----------------: |
-| `displayUpdateTask`          |           1            |                                                          100                                                           |                                                      16.334                                                       |                                                           16.334                                                            |       16.334        |
-| `decodeTask`                 |           2            |                                                          25.2                                                          |                                                      0.0113                                                       |                                                            0.045                                                            |        0.045        |
-| `CAN_TX_Task` & `CAN_TX_ISR` |           3            |                                                           60                                                           |                                                       0.012                                                       |                                                            0.020                                                            |        0.020        |
-| `scanInputTask`              |           4            |                                                           20                                                           |                                                      0.3007                                                       |                                                            1.504                                                            |        1.504        |
-| `sampleISR`                  |       Interrupt        |                                                        0.04545                                                         |                                                      0.0097                                                       |                                                           21.342                                                            |       21.342        |
-| `CAN_RX_ISR`                 |       Interrupt        |                                                          0.7                                                           |                                                      0.00319                                                      |                                                            0.456                                                            |        0.456        |
-|                              |                        |                                                                                                                        |                                                     **Total**                                                     |                                                           39.700                                                            |       39.700        | -->
+To do this, it is necessary to analyse the total latency of the system by computing the execution times for the worst case scenario possible and compare it to the latency of the lowest-priority task. -->
 
 <!-- The total latency obtained is 39.7ms, which is clearly less than the latency of our lowest-priority task `displayUpdateTask`: 100ms. Therefore none of the deadlines will be missed and our schedule will work without failures as all the tasks will be executed in the correct time frame.
 
 _Note: The execution times of `CAN_TX_Task` and of `CAN_TX_ISR` were measured together as the former depends on the latter when simulating its worst-case scenario (a full queue of outgoing messages)._
 
-The total CPU utilisation of our program is around **40%**. -->
+The total CPU utilisation of our program is around **40%**.  -->
 
 </br>
 
 ## Shared Resources
 
-### Description of shared resources
+All data and other resources that are accessed by multiple tasks is protected against errors caused by simultaneous access.
 
-The shared resources of our program are protected to guarantee safe access and synchronisation using:
+- **4 Mutexes** - Used to protect access by multiple tasks
 
-- ?? Mutexes
-- ?? Queues
-- ?? Semaphore
-- Multiple atomic operations
+  - `keyArrayMutex`: Copied locally using `memcpy` in threads to reduce locking time, shared by thread `scanKeysTask` & `displayUpdateTask`
+  - `RX_MessageMutex`: Copied locally using `memcpy` in threads to reduce locking time, shared by thread `decodeTask` & `displayUpdateTask`
+  - `keyboardPositionIdxMutex`: shared by thread `scanKeysTask` & `decodeTask`
 
-<!-- 1. The `keyArray`, which represents the state of all the input pins to the STM32. It is protected by the `keyArrayMutex` mutex that is used to write to it, or read to it in short bursts in order to minimize its locking time.
+- **2 Queues** - Uses FIFO buffer to reduce worst-case utilisation as one consider average initiation interval instead of peak
 
-1. The `keyArray_prev`, which stores the last state of the keyboard keys being pressed, is also protected by the same `keyArrayMutex` mutex.
+  - `msgInQ`
+  - `msgOutQ`: Guarded by Counting Semaphores
 
-1. The `currentStepSize`, which stores the current step size of the note being played, is only written to using atomic store operations as it is accessed by the `sampleISR` interrupt and can therefore not be protected by a Mutex.
+- **Atomic operations** - Prevent threads from stalling and ensure that the operation completed in a single CPU operation
 
-1. Similarly, the `notes_playing` boolean array stores whether or not a certain note is being played (it is used for one of our advanced features: polyphony) and has its elements modified only using atomic operations. This also because it is accessed inside the `sampleISR` interrupt, and as the whole array does not need to be synchronized and updated at once, atomic operations are used instead of a possible critical section.
+  - `EchoSwitch`
+  - `EnvelopeSwitch`
+  - `ModeSwitch`
+  - `VolumeRotation`
+  - `OctaveRotation`
+  - `WavetypeRotation`
+  - `currentStepSize`: Only accessed by the `sampleISR` interrupt hence cannot be protected by a Mutex
 
-1. The `msgInQ` queue, which acts as a buffer for incoming messages from the CAN Bus.
-
-1. The last received message, `RX_Message`, which is protected by the `RX_MessageMutex` mutex as it is accessed in multiple threads (mainly the decodeTask and the updateDisplayTask (for debugging)). When used in the decodeTask thread, it is only accessed briefly to store its content into a local variable that is then used for the computational analysis of its content, still to minimize locking time.
-
-1. The `msgOutQ` queue, which acts as a buffer for outgoing messages to the CAN Bus.
-
-1. The `CAN_TX_Semaphore` counting semaphore, used to regulate the number of messages being sent out to the CAN Bus. Its use will be explained further in the next section.
-
-1. Several board state variables, namely `isMuted` `isReceiverBoard` `lastMiddleCANRX` and `boardIndex` which are written to using atomic stores. This is once again because they can be accessed in an interrupt, such as `isMuted` in the `sampleISR` interrupt.
-
-1. Multiple objects of custom classes [CAN_Knob](./lib/Knob/can_knob.hpp), [Button](./lib/Button/button.hpp) and [Detect](./lib/Detect/detect.hpp) whose member variables are all written to using atomic operations, as they can be accessed in interrupts, such as `knob3.getRotation()` in the `sampleISR` interrupt. -->
+<!-- 1. Multiple objects of custom classes [CAN_Knob](./lib/Knob/can_knob.hpp), [Button](./lib/Button/button.hpp) and [Detect](./lib/Detect/detect.hpp) whose member variables are all written to using atomic operations, as they can be accessed in interrupts, such as `knob3.getRotation()` in the `sampleISR` interrupt. -->
 
 ## Inter-task Blocking Dependencies
 
-- Graph to be inserted
+Red arrow represents blocking dependencies whereas green represents non-blocking dependencies.
+
+<img src="./diagrams/dependencygraph1.pdf" alt="Single Keyboard" width="550">
+
+<img src="./diagrams/dependencygraph2.pdf" alt="Multiply Keyboards" width="550">
+
 <!--
 All dependencies between the tasks of our program can be visualized in a dependency graph:
 
@@ -109,12 +141,31 @@ As this graph is acyclic (i.e. there are no cycles/loops), this means that there
 
 ## Advanced Features
 
-- Knob class
-- Envelope
-- Button press User Interface
+- [Knob class](lib/knob)
+
+  - For scalability, `knob.h` and `knob.cpp` are written to get the rotation and state of switch for knobs 0-3
+  - Ensured thread safe by passing in local copy of `keyArray[i]`
+  - Methods include `getRotation`, `updateRotation`, `updateSwitch`, `getSwitch` and `setLimits`
+
 - Echoes
-- Sine Wave
+
+  - Integrated with multiple keyboards and can be used for both sawtooth wave and sine wave.
+  - High-level thread that generates indecies of decays of volume of sound.
+  - Uses atomic store and load of variable RE and `keyArrayMutex` from `scanKeyTask` to reset the decay value and the increment size of decay value.
+  - Whenever a key is pressed, the decay value is reset to `0` and increments over time. The increment is larger when releasing the key compared to when holding the key. The decay value does not reset unless the key is released and presssed again.
+  - When `keypressed` changes and `== 0`, the phase is reset to zero. In echo mode, resets of `currentStepSize` and `sineIdxAcc` are disabled for the volume to decay.
+
+- [Sine Wave](lib/wavestype/wavestype.h)
+
+  - Lookup table is generated upon setup based on `TABLE_SIZE` set
+  - Different keys have different index accumulation to achieve the different frequency
+
+- Envelope
+
+  - fff
+
 - Polyphony
+  - Detect all the simultaneous keys pressed and storing it in a global array. In the `sampleISR()` it takes the average of all the stepSizes of all keys pressed and adds to phase Accumulator.
 
 <!-- As part of this project, we have implemented several advanced features:
 

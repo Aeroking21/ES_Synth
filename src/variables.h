@@ -18,7 +18,6 @@
 // For keyboard modes
 bool singleKeyboard = true;
 bool keyboardMode = RECEIVER;
-volatile int keyboardPositionIdx = 0;
 int Idx = 0;
 int octave = 4;
 int activeNoteCount = 0;
@@ -33,6 +32,18 @@ Knob Mode(3, 0, 0, 0);
 Knob Envelope(0,0,0,0);
 Knob Echo(1,0,0,0);
 
+// For envelope
+int t = 0;
+int i = 0;
+bool keyReleased = false;
+bool off = false;
+double currentAmplitude;
+
+// For echo
+uint32_t ech;
+uint32_t sech;
+bool RE = 0;
+
 // -------------------- VOLATILE --------------------
 #ifdef POLYPHONY
 volatile uint32_t currentStepSize[MAX_KEYS_PLAYED_TGT];
@@ -42,6 +53,7 @@ volatile uint32_t currentStepSize;
 #endif
 volatile uint8_t keyArray[7];
 volatile uint32_t sineAcc = 0;
+volatile int keyboardPositionIdx = 0;
 volatile int sineIdxAcc = 0;
 volatile signed int rotationVariable = 0;
 volatile int WavetypeRotation = 8;
@@ -50,7 +62,7 @@ volatile int OctaveRotation = 4;
 volatile bool ModeSwitch = 0;
 volatile bool EnvelopeSwitch = 0;
 volatile bool EchoSwitch = 0;
-volatile uint8_t RX_Message[8] = {0};
+volatile uint8_t RX_Message[8] = {0}; 
 uint32_t prevKeyPressed = 0;
 uint8_t prevMessageIn[8] = {};
 
