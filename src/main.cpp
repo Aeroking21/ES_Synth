@@ -3,7 +3,6 @@
 #include <math.h>
 #include <STM32FreeRTOS.h>
 #include <ES_CAN.h>
-#include <vector>
 
 // Self-written header files
 #include <knob.h>
@@ -239,14 +238,17 @@ void scanKeysTask(void * pvParameters)
     Volume.updateRotation(localKeyArray);
     WaveType.updateRotation(localKeyArray);
     Mode.updateSwitch(localKeyArray);
-    Envelope.updateSwitch(localKeyArray);
-    Echo.updateSwitch(localKeyArray);
 
     localVolumeRotation = Volume.getRotation();
     localWavetypeRotation = WaveType.getRotation();
     localModeSwitch = Mode.getSwitch();
-    localEnvelopeSwitch = Envelope.getSwitch();
-    localEchoSwitch = Echo.getSwitch();
+
+    if (localModeSwitch){
+      Envelope.updateSwitch(localKeyArray);
+      Echo.updateSwitch(localKeyArray);
+      localEnvelopeSwitch = Envelope.getSwitch();
+      localEchoSwitch = Echo.getSwitch();
+    }
 
     if (keyboardMode == RECEIVER) 
     {
@@ -374,7 +376,11 @@ void scanKeysTask(void * pvParameters)
     __atomic_store_n(&ModeSwitch, localModeSwitch, __ATOMIC_RELAXED);
     __atomic_store_n(&OctaveRotation, localOctaveRotation, __ATOMIC_RELAXED);
     __atomic_store_n(&VolumeRotation, localVolumeRotation, __ATOMIC_RELAXED);
-    __atomic_store_n(&WavetypeRotation, localWavetypeRotation, __ATOMIC_RELAXED);
+    __atomic_store_n(&WavetypeRotation, localWavetypeRotation, __ATOMIC_RELAXED);\
+    
+    // UBaseType_t ux = uxTaskGetStackHighWaterMark( NULL );
+    // Serial.print("stack: ");
+    // Serial.println(ux);
   }
 }
 
@@ -408,26 +414,34 @@ void displayUpdateTask(void * pvParameters)
       exponent++;
     }
 
-    if (exponent != 0) {
-      u8g2.setFont(u8g2_font_ncenB08_tr);
-      u8g2.setCursor(2,10);
-      u8g2.print(keyOrder[exponent-1]); 
-    }
+    uint8_t localRX_Message[8];
+    xSemaphoreTake(RX_MessageMutex, portMAX_DELAY);
+    memcpy(&localRX_Message, (void*) &RX_Message, 8);
+    xSemaphoreGive(RX_MessageMutex);
 
     if (keyboardMode == SENDER)
     {
-      u8g2.setFont(u8g2_font_ncenB08_tr);
-      u8g2.setCursor(90,10);
+      u8g2.setFont(u8g2_font_emoticons21_tr);
+      u8g2.drawGlyph(55,28,50);
       u8g2.print("Sender");
     }
-    else if (singleKeyboard && keyboardMode == RECEIVER)
+    else if (singleKeyboard)
     {
       u8g2.setFont(u8g2_font_ncenB08_tr);
       u8g2.setCursor(90,10);
       u8g2.print("Single");
     }
-    else if (keyboardMode == RECEIVER)
+    if (keyboardMode == RECEIVER)
     {
+      if (exponent != 0) {
+        u8g2.setFont(u8g2_font_ncenB08_tr);
+        u8g2.setCursor(2,10);
+        u8g2.print(keyOrder[exponent-1]); 
+      }
+      else if (localRX_Message[0] == 'P') {
+        u8g2.setCursor(2,10);
+        u8g2.print(keyOrder[localRX_Message[2]]);
+      }
       if (!ModeSwitch){
         u8g2.setFont(u8g2_font_open_iconic_play_1x_t);
         u8g2.drawGlyph(2,30,79);
@@ -492,18 +506,14 @@ void displayUpdateTask(void * pvParameters)
         }
       }
       
-
-      uint8_t localRX_Message[8];
-      xSemaphoreTake(RX_MessageMutex, portMAX_DELAY);
-      memcpy(&localRX_Message, (void*) &RX_Message, 8);
-      xSemaphoreGive(RX_MessageMutex);
-      
-      u8g2.setFont(u8g2_font_ncenB08_tr); 
-      u8g2.setCursor(90,10);
-      u8g2.print((char) localRX_Message[0]);
-      u8g2.print(localRX_Message[1]);
-      u8g2.print(localRX_Message[2]);
-      u8g2.print(localRX_Message[3]);
+      if (!singleKeyboard) {
+        u8g2.setFont(u8g2_font_ncenB08_tr); 
+        u8g2.setCursor(90,10);
+        u8g2.print((char) localRX_Message[0]);
+        u8g2.print(localRX_Message[1]);
+        u8g2.print(localRX_Message[2]);
+        u8g2.print(localRX_Message[3]);
+      }
     }
     
     u8g2.sendBuffer();  
@@ -612,7 +622,10 @@ void decodeTask(void * pvParameters) {
         #endif
       }
     
-    }    
+    }        
+    // UBaseType_t ux = uxTaskGetStackHighWaterMark( NULL );
+    // Serial.print("stack: ");
+    // Serial.println(ux);
   }
 }
 
@@ -633,6 +646,9 @@ void CAN_TX_Task (void * pvParameters) {
 		xQueueReceive(msgOutQ, msgOut, portMAX_DELAY);
 		xSemaphoreTake(CAN_TX_Semaphore, portMAX_DELAY);
 		CAN_TX(0x123, msgOut);
+    // UBaseType_t ux = uxTaskGetStackHighWaterMark( NULL );
+    // Serial.print("stack: ");
+    // Serial.println(ux);
 	}
 }
 
@@ -773,7 +789,7 @@ void setup()
     xTaskCreate(
     CAN_TX_Task,		
     "CAN_TX_Task",		
-    256,      		
+    64,      		
     NULL,		
     3,			
     &TXTask );	
