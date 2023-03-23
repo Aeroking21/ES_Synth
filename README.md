@@ -3,7 +3,7 @@
 ## Table of content
 
 - [Identification of Tasks](./README.md#identification-of-tasks)
-- [Charaterisation of Tasks](./README.md#charaterisation-of-tasks)
+- [Charatecrisation of Tasks](./README.md#characterisation-of-tasks)
 - [Critical Instant Analysis](./README.md#real-time-critical-analysis)
 - [Total CPU Utilisation](./README.md#total-cpu-utilisation)
 - [Identification of shared data structures](./README.md#shared-resources)
@@ -43,18 +43,18 @@
 
 </br>
 
-## Charaterisation of Tasks
+## Characterisation of Tasks
 
 The theoretical minimum initiation interval and measured worst execution time for each tasks are tabulated below.
 
-| Task                | Priority (Low to High) | Minimum Initiation Interval (ms) | Worst-case Execution Time (ms) | Latency (ms) | CPU Utilisation (%) |
+| Task                | Priority (Low to High) | Minimum Initiation Interval (us) | Worst-case Execution Time (us) | Latency (ms) | CPU Utilisation (%) |
 | :------------------ | :--------------------: | :------------------------------: | :----------------------------: | :----------: | :-----------------: |
-| `displayUpdateTask` |           1            |               100                |                                |              |                     |
-| `decodeTask`        |      3 (RECEIVER)      |               25.2               |                                |              |                     |
-| `CAN_TX_Task`       |       2 (SENDER)       |                                  |                                |              |                     |
-| `scanKeyTask`       |           3            |                20                |                                |              |                     |
-| `sampleISR`         |       Interrupt        |              0.0455              |                                |              |                     |
-| `CAN_RX_ISR`        |       Interrupt        |                                  |                                |              |                     |
+| `displayUpdateTask` |           1            |              100000              |            15683.19            |      1       |                     |
+| `decodeTask`        |      3 (RECEIVER)      |              25200               |              4.81              |              |                     |
+| `CAN_TX_Task`       |       2 (SENDER)       |              60000               |             61.56              |              |                     |
+| `scanKeyTask`       |           3            |              20000               |             86.44              |              |                     |
+| `sampleISR`         |       Interrupt        |              45.45               |             11.91              |              |                     |
+| `CAN_RX_ISR`        |       Interrupt        |                                  |             0.039              |              |                     |
 | `CAN_TX_ISR`        |       Interrupt        |                                  |                                |              |                     |
 |                     |                        |                                  |           **Total**            |              |                     |
 
@@ -116,7 +116,10 @@ All data and other resources that are accessed by multiple tasks is protected ag
 
 ## Inter-task Blocking Dependencies
 
-Red arrow represents blocking dependencies whereas green represents non-blocking dependencies.
+All dependencies between the tasks of our program can be visualized in a dependency graph: red arrow represents blocking dependencies whereas green represents non-blocking dependencies.
+
+Mutexes can only be accessed by one thread at a time hence would cause stalling issues. However, mutex is always c
+Atomic operations is ignored, as they do not cause problems with dependencies.
 
 <img src="./diagrams/dependencygraph1.pdf" alt="Single Keyboard" width="550">
 
@@ -162,10 +165,15 @@ As this graph is acyclic (i.e. there are no cycles/loops), this means that there
 
 - Envelope
 
-  - fff
+  - 4 parameters: attack, delay, sustain, release
+  - Piecewise function, based on time `t`, parameters, and state of key being pressed
+  - If key is released, enters release mode
+  - Returns output in range 0-255 and is multiplied by Vout to change the current volume based on state of envelope
+  - Vout is then scaled appropriately, by dividing by `256`
 
 - Polyphony
   - Detect all the simultaneous keys pressed and storing it in a global array. In the `sampleISR()` it takes the average of all the stepSizes of all keys pressed and adds to phase Accumulator.
+  - Currently only working with single keyboard, uncomment `#define POLYPHONY` to use this feature.
 
 <!-- As part of this project, we have implemented several advanced features:
 

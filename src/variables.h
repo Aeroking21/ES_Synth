@@ -37,7 +37,7 @@ int t = 0;
 int i = 0;
 bool keyReleased = false;
 bool off = false;
-double currentAmplitude;
+volatile uint32_t currentAmplitude;
 
 // For echo
 uint32_t ech;
@@ -48,6 +48,7 @@ bool RE = 0;
 #ifdef POLYPHONY
 volatile uint32_t currentStepSize[MAX_KEYS_PLAYED_TGT];
 std::vector<uint16_t> activeNotes;
+volatile uint32_t prevNotesPressedOneHot = 0;
 #else
 volatile uint32_t currentStepSize;
 #endif

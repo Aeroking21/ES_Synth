@@ -10,6 +10,7 @@
 #include <variables.h>
 
 // envelope(10.0, 10.0, 255.0, 15.0, 100.0);
+#ifndef POLYPHONY
 double envelope(double tA, double tD, double maxAmplitude, double tR, double ks)
 {
   double kA = maxAmplitude / tA;
@@ -51,6 +52,7 @@ double envelope(double tA, double tD, double maxAmplitude, double tR, double ks)
     return ks;
   }
 }
+#endif
 
 uint32_t shiftIdxForOctave(int octave, int keyboardPositionIdx, uint32_t phase)
 {
@@ -69,7 +71,7 @@ uint32_t shiftIdxForOctave(int octave, int keyboardPositionIdx, uint32_t phase)
 
 void echoes(void *pvParameters)
 {
-  const TickType_t xFrequency5 = 75 / portTICK_PERIOD_MS;
+  const TickType_t xFrequency5 = 30 / portTICK_PERIOD_MS;
   TickType_t xLastWakeTime5 = xTaskGetTickCount();
   while (1)
   {
@@ -482,16 +484,16 @@ void scanKeysTask(void *pvParameters)
     }
     prevKeyPressed = keyPressed;
 
+    static bool _localEchoSwitch;
+
+    if(localEchoSwitch!=_localEchoSwitch){
+      currentStepSize = 0;
+      Idx = 0;
+      sineAcc = 0;
+    }
+    _localEchoSwitch = localEchoSwitch;
+
 #endif
-
-static bool _localEchoSwitch;
-
-if(localEchoSwitch!=_localEchoSwitch){
-  currentStepSize = 0;
-  Idx = 0;
-  sineAcc = 0;
-}
-_localEchoSwitch = localEchoSwitch;
 
     __atomic_store_n(&EchoSwitch, localEchoSwitch, __ATOMIC_RELAXED);
     __atomic_store_n(&EnvelopeSwitch, localEnvelopeSwitch, __ATOMIC_RELAXED);
@@ -908,14 +910,14 @@ void setup()
   Serial.print("Keyboard Position : ");
   Serial.println(keyboardPositionIdx);
 
-  TaskHandle_t localCurrentStepSize = NULL;
+  TaskHandle_t scanKeysTaskHandle = NULL;
   xTaskCreate(
       scanKeysTask,           /* Function that implements the task */
       "scanKeys",             /* Text name for the task */
       64,                     /* Stack size in words, not bytes */
       NULL,                   /* Parameter passed into the task */
-      4,                      /* Task priority */
-      &localCurrentStepSize); /* Pointer to store the task handle */
+      5,                      /* Task priority */
+      &scanKeysTaskHandle); /* Pointer to store the task handle */
 
   TaskHandle_t displayTask = NULL;
   xTaskCreate(
@@ -923,7 +925,7 @@ void setup()
       "displayTasks",
       256,
       NULL,
-      2,
+      1,
       &displayTask);
 
   TaskHandle_t EchoHandle = NULL;
@@ -932,7 +934,7 @@ void setup()
       "echoes",
       64,
       NULL,
-      5,
+      2,
       &EchoHandle);
 
   if (keyboardMode == RECEIVER && !singleKeyboard)
