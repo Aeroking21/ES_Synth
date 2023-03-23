@@ -20,7 +20,7 @@ bool singleKeyboard = true;
 bool polyphony = true;
 bool westPositionSet = false;
 bool keyboardMode = RECEIVER;
-int keyboardPositionIdx = 0;
+volatile int keyboardPositionIdx = 0;
 int octave = 4;
 int activeNoteCount = 0;
 
@@ -29,7 +29,7 @@ const uint8_t MAX_KEYS_PLAYED_TGT = 8;
 
 Knob WaveType(1, 0, 0, 1);
 Knob Volume(0, 4, 0, 8);
-Knob Octave(2, 4, 3, 6);
+Knob Octave(2, 4, 3, 5);
 
 
 // -------------------- VOLATILE --------------------
@@ -40,6 +40,8 @@ std::vector<uint16_t> activeNotes;
 volatile uint32_t currentStepSize;
 #endif
 volatile uint8_t keyArray[7];
+volatile uint32_t sineAcc = 0;
+volatile int sineIdxAcc = 0;
 volatile signed int rotationVariable = 0;
 volatile signed int WavetypeRotation = 8;
 volatile signed int VolumeRotation = 4;
@@ -93,6 +95,7 @@ SemaphoreHandle_t stepSizeMutex;
 SemaphoreHandle_t RX_MessageMutex;
 SemaphoreHandle_t CAN_TX_Semaphore;
 SemaphoreHandle_t activeNotesMutex;
+SemaphoreHandle_t keyboardPositionIdxMutex;
 QueueHandle_t msgInQ;
 QueueHandle_t msgOutQ;
 

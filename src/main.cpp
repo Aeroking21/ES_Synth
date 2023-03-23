@@ -10,6 +10,24 @@
 #include <wavestype.h>
 #include <variables.h>
 
+int Idx = 0;
+
+
+uint32_t shiftIdxForOctave (int keyboardPositionIdx, uint32_t phase)
+{
+  // __atomic_load_n(&OctaveRotation, __ATOMIC_RELAXED);
+  
+  int shift = OctaveRotation + keyboardPositionIdx - 4;
+
+  if (OctaveRotation + keyboardPositionIdx >= 4) {
+    phase = phase << std::abs(shift);
+  }
+  else if (4 - OctaveRotation - keyboardPositionIdx < 4) {
+    phase = phase >> std::abs(shift);
+  }
+  return phase;
+}
+
 void sampleISR() {
 
   if (keyboardMode == RECEIVER)
@@ -41,8 +59,9 @@ void sampleISR() {
         Vout = Vout >> (8 - VolumeRotation);
         analogWrite(OUTR_PIN, (Vout + 128));
       #else
+        
         static uint32_t phaseAcc = 0;
-        phaseAcc += currentStepSize;  
+        phaseAcc += shiftIdxForOctave(keyboardPositionIdx, currentStepSize);
 
         int32_t Vout = (phaseAcc >> 24) - 128;
         Vout = Vout >> (8 - VolumeRotation);
@@ -52,6 +71,16 @@ void sampleISR() {
     }
     else { // Sine Wave
 
+      // Idx += sineIdxAcc;
+      Idx += shiftIdxForOctave(keyboardPositionIdx, sineIdxAcc);
+    
+      if (Idx > TABLE_SIZE) Idx = 0;
+      sineAcc = sineLookUpTable[Idx];
+
+      uint32_t Vout = (sineAcc >> 24) - 128;
+      Vout = Vout >> (8 - VolumeRotation);
+      
+      analogWrite(OUTR_PIN, Vout + 128);
     }
   }
 }
@@ -133,14 +162,14 @@ void keyScanningRoutine()
 void scanKeysTask(void * pvParameters) 
 {
   // Set initiation interval in millis
-  const TickType_t xFrequency = 10/portTICK_PERIOD_MS;
+  const TickType_t xFrequency = 20/portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
 
   uint32_t ID = 0x123;
   uint8_t TX_Message[8];
   uint8_t localKeyArray[7];
 
-  static uint32_t localCurrentStepSize = 0;
+  static uint32_t localKeyboardPositionIdx;
   static signed int localVolumeRotation = 4;
   static signed int localWavetypeRotation = 0;
   static signed int localOctaveRotation = 4;
@@ -226,19 +255,43 @@ void scanKeysTask(void * pvParameters)
     {
       if (keyPressed != prevKeyPressed)
       {  
+        // xSemaphoreTake(stepSizeMutex, portMAX_DELAY);
         if (keyPressed == 0) {
-          localCurrentStepSize = 0;
+          currentStepSize = 0;
+          sineIdxAcc = 0;
         } 
         else
         {
-          localCurrentStepSize = stepSizes[exponent-1];          
-        };
-      }
-      // Serial.println(localCurrentStepSize);
+          currentStepSize = stepSizes[exponent-1];   
+          sineIdxAcc = sineLookUpAcc[exponent-1];  
+          // Idx += sineIdxAcc;
+          // if (Idx > TABLE_SIZE) Idx = 0;
+          // localSineAcc = sineLookUpTable[Idx];     
+        }
+        // xSemaphoreGive(stepSizeMutex);
+      }            
+      // xSemaphoreTake(keyboardPositionIdxMutex, portMAX_DELAY);
+      keyboardPositionIdx = 0; 
+      // __atomic_store_n(&keyboardPositionIdx, localKeyboardPositionIdx, __ATOMIC_RELAXED);
+      // xSemaphoreGive(keyboardPositionIdxMutex);
+      // xSemaphoreTake(stepSizeMutex, portMAX_DELAY);
+      // currentStepSize = shiftIdxForOctave(keyboardPositionIdx, currentStepSize);
+      // xSemaphoreGive(stepSizeMutex);
+      // xSemaphoreTake(sineAccMutex, portMAX_DELAY);
+      // sineIdxAcc = shiftIdxForOctave(keyboardPositionIdx, sineIdxAcc);
+      // xSemaphoreGive(sineAccMutex);
       // if (keyPressed != 0) {
-      //   if ((OctaveRotation - 4) >= 0) localCurrentStepSize = localCurrentStepSize << (OctaveRotation - 4);
-      //   else localCurrentStepSize = localCurrentStepSize >> (4 - OctaveRotation);
+      //   if ((OctaveRotation - 4) >= 0) 
+      //   {
+      //     Serial.println(OctaveRotation);
+      //     localCurrentStepSize = localCurrentStepSize << (OctaveRotation - 4);
+      //   }
+      //   else 
+      //   {
+      //     localCurrentStepSize = localCurrentStepSize >> (4 - OctaveRotation);
+      //   }
       // }
+        // __atomic_store_n(&sineIdxAcc, localSineIdxAcc, __ATOMIC_RELAXED); 
     }
     else if (keyboardMode == SENDER && !singleKeyboard) 
     {
@@ -254,13 +307,14 @@ void scanKeysTask(void * pvParameters)
           TX_Message[0] = 'R';
         }
       }
-      TX_Message[1] = OctaveRotation + keyboardPositionIdx;
+      xSemaphoreTake(keyboardPositionIdxMutex, portMAX_DELAY);
+      TX_Message[1] = localOctaveRotation + keyboardPositionIdx;
       TX_Message[3] = keyboardPositionIdx;
+      xSemaphoreGive(keyboardPositionIdxMutex);
       
       xQueueSend(msgOutQ, TX_Message, portMAX_DELAY);
     }
-
-    __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
+    // __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
     #endif
     
     prevKeyPressed = keyPressed;
@@ -269,11 +323,6 @@ void scanKeysTask(void * pvParameters)
     __atomic_store_n(&VolumeRotation, localVolumeRotation, __ATOMIC_RELAXED);
     __atomic_store_n(&WavetypeRotation, localWavetypeRotation, __ATOMIC_RELAXED);
   }
-}
-
-void updateStepSize(void * pvParameters)
-{
-
 }
 
 void displayUpdateTask(void * pvParameters) 
@@ -346,7 +395,7 @@ void displayUpdateTask(void * pvParameters)
       xSemaphoreTake(RX_MessageMutex, portMAX_DELAY);
       memcpy(&localRX_Message, (void*) &RX_Message, 8);
       xSemaphoreGive(RX_MessageMutex);
-      u8g2.setCursor(50,20);
+      u8g2.setCursor(90,10);
       u8g2.print((char) localRX_Message[0]);
       u8g2.print(localRX_Message[1]);
       u8g2.print(localRX_Message[2]);
@@ -372,7 +421,7 @@ void decodeTask(void * pvParameters) {
   uint8_t notesPressed[MAX_KEYS_PLAYED_TGT] = {128,128,128,128,128,128,128,128};
   uint8_t localKeyArray[7];
   #else
-  int32_t localCurrentStepSize = 0;
+  int32_t localKeyboardPositionIdx;
   #endif
 
   uint8_t messageIn[8] = {};
@@ -380,7 +429,7 @@ void decodeTask(void * pvParameters) {
   
   while (1) {
 
-    if (keyboardMode == RECEIVER)
+    if (keyboardMode == RECEIVER && !singleKeyboard)
     {
       if (xQueueReceive(msgInQ, messageIn, portMAX_DELAY) == pdTRUE) 
       {
@@ -445,18 +494,22 @@ void decodeTask(void * pvParameters) {
         if ((messageIn[0] != prevMessageIn[0]) || (messageIn[2] != prevMessageIn[2]))
         {
           if (messageIn[0] == 'R'){
-            localCurrentStepSize = 0;
+            currentStepSize = 0;
+            sineIdxAcc = 0;
           }
-          else {
-            localCurrentStepSize = stepSizes[messageIn[2]];
-            if ((OctaveRotation + messageIn[3] - 4) >= 0) localCurrentStepSize = localCurrentStepSize << (OctaveRotation + messageIn[3] - 4);
-            else localCurrentStepSize = localCurrentStepSize >> (4 - OctaveRotation - messageIn[3]);
+          else 
+          {
+            currentStepSize = stepSizes[messageIn[2]];  
+            sineIdxAcc = sineLookUpAcc[messageIn[2]];  
           }
         }
-        prevMessageIn[0] = messageIn[0];
-        prevMessageIn[2] = messageIn[2];
-
-        __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
+        // xSemaphoreTake(keyboardPositionIdxMutex, portMAX_DELAY);
+        // keyboardPositionIdx = messageIn[3];
+        // xSemaphoreGive(keyboardPositionIdxMutex);
+        prevMessageIn[0] = messageIn[0];  
+        prevMessageIn[2] = messageIn[2];  
+        
+        // __atomic_store_n(&keyboardPositionIdx, localKeyboardPositionIdx, __ATOMIC_RELAXED);
         #endif
       }
     
@@ -529,6 +582,8 @@ uint32_t getModuleUID() {
 
 void setup() 
 {
+  generateSineLookUp();
+
   //Set pin directions
   pinMode(RA0_PIN, OUTPUT);
   pinMode(RA1_PIN, OUTPUT);
@@ -569,6 +624,7 @@ void setup()
   stepSizeMutex = xSemaphoreCreateMutex();
   RX_MessageMutex = xSemaphoreCreateMutex();
   activeNotesMutex = xSemaphoreCreateMutex();
+  keyboardPositionIdxMutex = xSemaphoreCreateMutex();
 
   CAN_TX_Semaphore = xSemaphoreCreateCounting(3,3);
 
@@ -599,26 +655,30 @@ void setup()
   "displayTasks",		
   256,      		
   NULL,			
-  4,			
+  2,			
   &displayTask );	
 
-  TaskHandle_t decodeTaskHandle = NULL;
-  xTaskCreate(
-  decodeTask,		
-  "decodeTask",	
-  64,      		 
-  NULL,			
-  4,			
-  &decodeTaskHandle );	
- 
-  TaskHandle_t TXTask = NULL;
-  xTaskCreate(
-  CAN_TX_Task,		
-  "CAN_TX_Task",		
-  256,      		
-  NULL,		
-  4,			
-  &TXTask );	
+  if (keyboardMode == RECEIVER && !singleKeyboard) {
+    TaskHandle_t decodeTaskHandle = NULL;
+    xTaskCreate(
+    decodeTask,		
+    "decodeTask",	
+    64,      		 
+    NULL,			
+    4,			
+    &decodeTaskHandle );	
+  }
+  
+  if (keyboardMode == SENDER && !singleKeyboard) {
+    TaskHandle_t TXTask = NULL;
+    xTaskCreate(
+    CAN_TX_Task,		
+    "CAN_TX_Task",		
+    256,      		
+    NULL,		
+    3,			
+    &TXTask );	
+  }
 
   if (keyArrayMutex == NULL) {
     Serial.println("Error: Mutex was not created because the memory required to hold the mutex could not be allocated");
@@ -635,14 +695,6 @@ void setup()
     CAN_RegisterTX_ISR(CAN_TX_ISR);
     CAN_Start();
   }
-  else
-  {
-    CAN_Init(false);
-    setCANFilter(0x123, 0x7ff);
-    CAN_RegisterRX_ISR(CAN_RX_ISR);
-    CAN_RegisterTX_ISR(CAN_TX_ISR);
-    CAN_Start();
-  }
 
   Serial.println("Done Setting Up");
 
@@ -650,5 +702,5 @@ void setup()
 }
 
 void loop() {
-  checkKeyboardandSetMode();
+  // checkKeyboardandSetMode();
 }
