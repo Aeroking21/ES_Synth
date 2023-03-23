@@ -10,13 +10,9 @@
 #include <wavestype.h>
 #include <variables.h>
 
-int Idx = 0;
-
 
 uint32_t shiftIdxForOctave (int octave, int keyboardPositionIdx, uint32_t phase)
 {
-  // __atomic_load_n(&OctaveRotation, __ATOMIC_RELAXED);
-  
   int shift = octave + keyboardPositionIdx - 4;
 
   if (octave + keyboardPositionIdx >= 4) {
@@ -59,7 +55,6 @@ void sampleISR() {
         Vout = Vout >> (8 - VolumeRotation);
         analogWrite(OUTR_PIN, (Vout + 128));
       #else
-        
         static uint32_t phaseAcc = 0;
         phaseAcc += shiftIdxForOctave(octave, keyboardPositionIdx, currentStepSize);
 
@@ -69,9 +64,8 @@ void sampleISR() {
         analogWrite(OUTR_PIN, Vout + 128);
       #endif
     }
-    else { // Sine Wave
-
-      // Idx += sineIdxAcc;
+    else // Sine Wave
+    { 
       Idx += shiftIdxForOctave(octave, keyboardPositionIdx, sineIdxAcc);
     
       if (Idx > TABLE_SIZE) Idx = 0;
@@ -259,7 +253,6 @@ void scanKeysTask(void * pvParameters)
     {
       if (keyPressed != prevKeyPressed)
       {  
-        // xSemaphoreTake(stepSizeMutex, portMAX_DELAY);
         if (keyPressed == 0) {
           currentStepSize = 0;
           sineIdxAcc = 0;
@@ -269,34 +262,8 @@ void scanKeysTask(void * pvParameters)
           octave = localOctaveRotation ;
           currentStepSize = stepSizes[exponent-1];   
           sineIdxAcc = sineLookUpAcc[exponent-1];  
-          // Idx += sineIdxAcc;
-          // if (Idx > TABLE_SIZE) Idx = 0;
-          // localSineAcc = sineLookUpTable[Idx];     
-        }
-        // xSemaphoreGive(stepSizeMutex);
       }            
-      // xSemaphoreTake(keyboardPositionIdxMutex, portMAX_DELAY);
       keyboardPositionIdx = 0; 
-      // __atomic_store_n(&keyboardPositionIdx, localKeyboardPositionIdx, __ATOMIC_RELAXED);
-      // xSemaphoreGive(keyboardPositionIdxMutex);
-      // xSemaphoreTake(stepSizeMutex, portMAX_DELAY);
-      // currentStepSize = shiftIdxForOctave(keyboardPositionIdx, currentStepSize);
-      // xSemaphoreGive(stepSizeMutex);
-      // xSemaphoreTake(sineAccMutex, portMAX_DELAY);
-      // sineIdxAcc = shiftIdxForOctave(keyboardPositionIdx, sineIdxAcc);
-      // xSemaphoreGive(sineAccMutex);
-      // if (keyPressed != 0) {
-      //   if ((OctaveRotation - 4) >= 0) 
-      //   {
-      //     Serial.println(OctaveRotation);
-      //     localCurrentStepSize = localCurrentStepSize << (OctaveRotation - 4);
-      //   }
-      //   else 
-      //   {
-      //     localCurrentStepSize = localCurrentStepSize >> (4 - OctaveRotation);
-      //   }
-      // }
-        // __atomic_store_n(&sineIdxAcc, localSineIdxAcc, __ATOMIC_RELAXED); 
     }
     else if (keyboardMode == SENDER && !singleKeyboard) 
     {
@@ -319,7 +286,6 @@ void scanKeysTask(void * pvParameters)
       
       xQueueSend(msgOutQ, TX_Message, portMAX_DELAY);
     }
-    // __atomic_store_n(&currentStepSize, localCurrentStepSize, __ATOMIC_RELAXED);
     #endif
     
     prevKeyPressed = keyPressed;
@@ -430,8 +396,8 @@ void decodeTask(void * pvParameters) {
   #endif
 
   uint8_t messageIn[8] = {};
-  
-  
+  uint8_t prevMessageIn[8] = {};
+
   while (1) {
 
     if (keyboardMode == RECEIVER && !singleKeyboard)
@@ -510,13 +476,9 @@ void decodeTask(void * pvParameters) {
             sineIdxAcc = sineLookUpAcc[messageIn[2]];  
           }
         }
-        // xSemaphoreTake(keyboardPositionIdxMutex, portMAX_DELAY);
-        // xSemaphoreGive(keyboardPositionIdxMutex);
         prevMessageIn[0] = messageIn[0]; 
         prevMessageIn[1] = messageIn[1];   
         prevMessageIn[2] = messageIn[2];  
-        
-        // __atomic_store_n(&keyboardPositionIdx, localKeyboardPositionIdx, __ATOMIC_RELAXED);
         #endif
       }
     
@@ -555,17 +517,23 @@ void checkKeyboardandSetMode()
   
   int eastDetect = (~localKeyArray[6] >> 3) & 1;
   int westDetect = (~localKeyArray[5] >> 3) & 1;
-  // Serial.println(westDetect);
-  // Serial.println(eastDetect);
   singleKeyboard = !westDetect & !eastDetect;
+
   if (singleKeyboard) keyboardMode = RECEIVER;
-  if (!singleKeyboard && westDetect && !eastDetect) {
-    keyboardMode = SENDER;
-    keyboardPositionIdx = 1;
-  }
-  else if (!singleKeyboard && eastDetect && !westDetect) {
-    keyboardMode = RECEIVER;
-    keyboardPositionIdx = 0;
+  else 
+  {
+    if (!westDetect && eastDetect) {
+      keyboardMode = RECEIVER;
+      keyboardPositionIdx = 0;
+    }
+    // else if (eastDetect && westDetect) {
+    //   keyboardMode = SENDER;
+    //   keyboardPositionIdx = 1;
+    // }
+    else if (westDetect && !eastDetect){
+      keyboardMode = SENDER;
+      keyboardPositionIdx = 1;
+    }
   }
 }
 
@@ -709,5 +677,4 @@ void setup()
 }
 
 void loop() {
-  // checkKeyboardandSetMode();
 }
