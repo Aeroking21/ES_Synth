@@ -14,8 +14,8 @@ int i = 0;
 bool keyReleased = false;
 bool off = false;
 double currentAmplitude;
-volatile uint32_t ech;
-volatile uint32_t sech;
+uint32_t ech;
+uint32_t sech;
 bool RE = 0;
 
 // envelope(10.0, 10.0, 255.0, 15.0, 100.0);
@@ -95,6 +95,7 @@ void echoes(void *pvParameters)
 
     uint32_t _keyPressed = ((~localKeyArray[2] & 0xf) << 8) | ((~localKeyArray[1] & 0xf) << 4) | (~localKeyArray[0] & 0xf);
     uint32_t _prevKeyPressed;
+    static bool _RE;
 
     uint32_t _ech = __atomic_load_n(&ech, __ATOMIC_RELAXED);
     uint32_t _sech = __atomic_load_n(&sech, __ATOMIC_RELAXED);
@@ -110,15 +111,16 @@ void echoes(void *pvParameters)
       {
         n += 0.5;
       }
+      _RE = 0;
     }
     else
     {
       // Serial.println("pressed");
-      if (_keyPressed != _prevKeyPressed || RE == 1)
+      if (_keyPressed != _prevKeyPressed || (RE==1 && _RE==0))
       {
         _ech = 1;
         n = 0;
-        RE = 0;
+        _RE = 1;
       }
       else
       {
@@ -491,6 +493,15 @@ void scanKeysTask(void *pvParameters)
 
 #endif
 
+static bool _localEchoSwitch;
+
+if(localEchoSwitch!=_localEchoSwitch){
+  currentStepSize = 0;
+  Idx = 0;
+  sineAcc = 0;
+}
+_localEchoSwitch = localEchoSwitch;
+
     __atomic_store_n(&EchoSwitch, localEchoSwitch, __ATOMIC_RELAXED);
     __atomic_store_n(&EnvelopeSwitch, localEnvelopeSwitch, __ATOMIC_RELAXED);
     __atomic_store_n(&ModeSwitch, localModeSwitch, __ATOMIC_RELAXED);
@@ -567,8 +578,8 @@ void displayUpdateTask(void *pvParameters)
         u8g2.print(keyOrder[localRX_Message[2]]);
       }
 
-      u8g2.setCursor(30, 10);
-      u8g2.print(sech);
+      // u8g2.setCursor(30, 10);
+      // u8g2.print(ech);
 
       if (!ModeSwitch)
       {
