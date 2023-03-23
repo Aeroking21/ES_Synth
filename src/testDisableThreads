@@ -313,8 +313,9 @@ void scanKeysTask(void *pvParameters)
 {
   // Set initiation interval in millis
   const TickType_t xFrequency = 20 / portTICK_PERIOD_MS;
+  #ifndef DISABLE_THREADS
   TickType_t xLastWakeTime = xTaskGetTickCount();
-
+  #endif
   uint32_t ID = 0x123;
   uint8_t TX_Message[8];
   uint8_t localKeyArray[7];
@@ -326,11 +327,11 @@ void scanKeysTask(void *pvParameters)
   static bool localModeSwitch = 0;
   static bool localEchoSwitch = 0;
   static bool localEnvelopeSwitch = 0;
-
+  #ifndef DISABLE_THREADS
   while (1)
   {
     vTaskDelayUntil(&xLastWakeTime, xFrequency);
-
+  #endif
     keyScanningRoutine();
 
     xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
@@ -508,8 +509,9 @@ _localEchoSwitch = localEchoSwitch;
     // Serial.print("stack: ");
     // Serial.println(ux);
   }
+  #ifndef DISABLE_THREADS
 }
-
+#endif
 void displayUpdateTask(void *pvParameters)
 {
   uint32_t ID = 0x123;
@@ -519,12 +521,12 @@ void displayUpdateTask(void *pvParameters)
 
   u8g2.clearBuffer();
   u8g2.setFont(u8g2_font_ncenB08_tr);
-
+  #ifndef DISABLE_THREADS
   while (1)
   {
-
+    
     vTaskDelayUntil(&xLastWakeTime2, xFrequency2);
-
+  #endif
     xSemaphoreTake(keyArrayMutex, portMAX_DELAY);
     memcpy(&localKeyArray, (void *)&keyArray, 7);
     xSemaphoreGive(keyArrayMutex);
@@ -665,7 +667,9 @@ void displayUpdateTask(void *pvParameters)
     // Serial.print("stack: ");
     // Serial.println(ux);
   }
+  #ifndef DISABLE_THREADS
 }
+#endif
 
 void decodeTask(void *pvParameters)
 {
@@ -986,7 +990,7 @@ void setup()
 #ifdef TEST_SCANKEYS
 	uint32_t startTime = micros();
 	for (int iter = 0; iter < 32; iter++) {
-		scanKeysTask(NULL);
+		scanKeysTask();
 	}
 	Serial.println(micros()-startTime);
 	while(1);
@@ -995,7 +999,7 @@ void setup()
 #ifdef TEST_DISPLAYUPDATE
 	uint32_t startTime = micros();
 	for (int iter = 0; iter < 32; iter++) {
-		displayUpdateTask(NULL);
+		displayUpdateTask();
 	}
 	Serial.println(micros()-startTime);
 	while(1);
@@ -1004,7 +1008,7 @@ void setup()
 #ifdef TEST_ECHOES
 	uint32_t startTime = micros();
 	for (int iter = 0; iter < 32; iter++) {
-		echoes(NULL);
+		echoes();
 	}
 	Serial.println(micros()-startTime);
 	while(1);
@@ -1013,7 +1017,7 @@ void setup()
 #ifdef TEST_DECODE
 	uint32_t startTime = micros();
 	for (int iter = 0; iter < 36; iter++) {
-		decodeTask(NULL);
+		decodeTask();
 	}
 	Serial.println(micros()-startTime);
 	while(1);
@@ -1022,7 +1026,7 @@ void setup()
 #ifdef TEST_CAN_TX
 	uint32_t startTime = micros();
 	for (int iter = 0; iter < 36; iter++) {
-		CAN_TX_Task(NULL);
+		CAN_TX_Task();
 	}
 	Serial.println(micros()-startTime);
 	while(1);
