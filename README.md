@@ -49,14 +49,14 @@ The theoretical minimum initiation interval and measured worst execution time fo
 
 | Task                | Priority (Low to High) | Minimum Initiation Interval (us) | Worst-case Execution Time (us) | Latency (ms) | CPU Utilisation (%) |
 | :------------------ | :--------------------: | :------------------------------: | :----------------------------: | :----------: | :-----------------: |
-| `displayUpdateTask` |           1            |              100000              |            15683.19            |      1       |                     |
-| `decodeTask`        |      3 (RECEIVER)      |              25200               |              4.81              |              |                     |
-| `CAN_TX_Task`       |       2 (SENDER)       |              60000               |             61.56              |              |                     |
-| `scanKeyTask`       |           3            |              20000               |             86.44              |              |                     |
-| `sampleISR`         |       Interrupt        |              45.45               |             11.91              |              |                     |
-| `CAN_RX_ISR`        |       Interrupt        |                                  |             0.039              |              |                     |
-| `CAN_TX_ISR`        |       Interrupt        |                                  |                                |              |                     |
-|                     |                        |                                  |           **Total**            |              |                     |
+| `displayUpdateTask` |           1            |              100000              |            15683.19            |      1       |        15.68        |
+| `decodeTask`        |      3 (RECEIVER)      |              25200               |              239               |     3.97     |        0.398        |
+| `CAN_TX_Task`       |       2 (SENDER)       |              60000               |               86               |     1.67     |        0.143        |
+| `scanKeyTask`       |           3            |              20000               |             86.44              |      5       |        0.432        |
+| `sampleISR`         |       Interrupt        |              45.45               |              280               |     5000     |        59.53        |
+| `CAN_RX_ISR`        |       Interrupt        |              60000               |              197               |     1.67     |        0.328        |
+| `CAN_TX_ISR`        |       Interrupt        |              60000               |               86               |     1.67     |        0.143        |
+|                     |                        |                                  |           **Total**            |              |        77.63        |
 
 </br>
 
@@ -118,27 +118,13 @@ All data and other resources that are accessed by multiple tasks is protected ag
 
 All dependencies between the tasks of our program can be visualized in a dependency graph: red arrow represents blocking dependencies whereas green represents non-blocking dependencies.
 
-Mutexes can only be accessed by one thread at a time hence would cause stalling issues. However, mutex is always c
-Atomic operations is ignored, as they do not cause problems with dependencies.
+Mutexes can only be accessed by one thread at a time hence would cause stalling issues. However, mutex is always copied locally to reduce blocking time.
+
+Since there is no loop connecting tasks, it can deduced that there is no deadlock in this system.
 
 <img src="./diagrams/dependencygraph1.pdf" alt="Single Keyboard" width="550">
 
 <img src="./diagrams/dependencygraph2.pdf" alt="Multiply Keyboards" width="550">
-
-<!--
-All dependencies between the tasks of our program can be visualized in a dependency graph:
-
-<img src="./dependency_graph.jpg" alt="Dependency Graph" width="550"/>
-
-Where all red dependencies are external dependencies, interrupts are represented by an ellipsis, threads are represented by a rounded rectangle, and queues have been explicitely represented as green rectangles for a more detailed representation of dependencies.
-
-We note that mutexes are ignored in this dependency graph as they contain non-blocking operations, and always unlock the ressource after a short period of time. Atomic operations are also ignored, as they do not cause problems with dependencies.
-
-As shown in the graph, the RX and TX queues, respectively `msgInQ` and `msgOutQ` are dependencies for all tasks accessing them. This is because they are blocking whenever a task wants to read from them but they are empty (such as for the `decodeTask`), as well as when a task wants to write to them but they are full (such as for `CAN_TX_Task`).
-
-The dependency between `CAN_TX_Task` and `CAN_TX_ISR` is because of the Counting Semaphore `CAN_TX_Semaphore` that regulates the flow of outgoing messages to the CAN Bus. This is because the STM32 can only load three messages at a time to be sent out to the bus. This semaphore therefore blocks the `CAN_TX_Task` thread until an output slot is free.
-
-As this graph is acyclic (i.e. there are no cycles/loops), this means that there are **no risks of deadlocks** in our program. -->
 
 </br>
 
@@ -175,20 +161,14 @@ As this graph is acyclic (i.e. there are no cycles/loops), this means that there
   - Detect all the simultaneous keys pressed and storing it in a global array. In the `sampleISR()` it takes the average of all the stepSizes of all keys pressed and adds to phase Accumulator.
   - Currently only working with single keyboard, uncomment `#define POLYPHONY` to use this feature.
 
-<!-- As part of this project, we have implemented several advanced features:
+## User Interface
 
-- A board mode Button (Button of Knob 0) that, when being pressed, sets the current board as Receiver and all other connected boards to be Senders. (_Note: by default all boards are set to be receivers until a specific one is chosen_)
+<img src="./diagrams/first.pdf" alt="Display 1" width="550">
 
-- A mute-switch has been implemented: by simply pressing on the Button of Knob 3 (the right-most knob), the output speaker of the current board will be disabled (and a `X` will be displayed instead of the volume level after `Vol:`).
+<img src="./diagrams/second.pdf" alt="Display 2" width="550">
 
-- The octave of a Receiver board can be chosen using Knob 2 (displayed on the screen as `Oct:`).
+## Video
 
-- We have also implemented support for Sinusoidal Waveforms, which can be chosen with Knob 1 (displayed on the screen as `~:`). This was implemented using look-up tables that are generated on start-up of the board (the implementation for this feature is in [sample_library.hpp](./lib/SampleLibrary/sample_library.hpp)).
+The video demonstrates the features implemented, which includes polyphony, echo, volume control, wave switching, octave control, mode switching to echoes and envelope.
 
-- We have implemented polyphony for the Sinusoidal Waveform, such that multiple notes from multiple boards with different octaves, can be played at once (without clipping).
-
-- We have implemented Handshaking with up to 3 boards to determine their relative positions (displayed as `Idx` on their respective screens).
-
-- This handshaking is then used to dynamically change the octaves of all contiguous boards, such that a board is always set to an octave higher than the one on its left.
-
-- When multiple boards are connected, 'Knob 3' which controls the volume and 'Knob 1' which changes the type of waveform, are synchronized across all the boards. This is implemented using the [CAN_Knob](./lib/Knob/can_knob.hpp) custom object class which makes this code easily scalable to accomodate more advanced features. -->
+[Link to demo video](diagrams/demo.mov)
