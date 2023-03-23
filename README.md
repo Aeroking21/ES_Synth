@@ -69,21 +69,19 @@ Flash - 28.3%
 
 ### Stack Usage for each Thread
 
-- displayUpdate - 128 words (256 allocated)
+- displayUpdate - 128 words (256 allocated)git
 - scanKeyTask - 60 words (64 allocated)
 - decodeTask - 61 words (64 allocated)
 - CAN_TX_Task - 44 words (64 allocated)
 
 ## Real Time Critical Analysis
 
-<!-- A critical time analysis is crucial to predict whether all the tasks will be executed within the deadlines of a system.
-To do this, it is necessary to analyse the total latency of the system by computing the execution times for the worst case scenario possible and compare it to the latency of the lowest-priority task. -->
+- A critical time analysis is crucial to predict whether all the tasks will be executed within the deadlines of a system.
+  To do this, it is necessary to analyse the total latency of the system by computing the execution times for the worst case scenario possible and compare it to the latency of the lowest-priority task. The worst case scenarios used in calculation assume that the scanKeys() functions sends 12 key press messages for every iteration of the function, and assumes a full queue of outgoing and incoming messages. The initiation intervals and the corresponding CPU utilisation for the decode and CAN communication functions were defined for 36 iterations.
 
-<!-- The total latency obtained is 39.7ms, which is clearly less than the latency of our lowest-priority task `displayUpdateTask`: 100ms. Therefore none of the deadlines will be missed and our schedule will work without failures as all the tasks will be executed in the correct time frame.
+- The total latency obtained is 77.629ms, which is clearly less than the latency of our lowest-priority task `displayUpdateTask`: 100ms. Therefore none of the deadlines will be missed and our schedule will work without failures as all the tasks will be executed in the correct time frame.
 
-_Note: The execution times of `CAN_TX_Task` and of `CAN_TX_ISR` were measured together as the former depends on the latter when simulating its worst-case scenario (a full queue of outgoing messages)._
-
-The total CPU utilisation of our program is around **40%**.  -->
+- The total CPU utilisation of our program is around _78%_, with 59.53% used by the sampleISR() function and 15.68% by the displayUpdate() function.
 
 </br>
 
