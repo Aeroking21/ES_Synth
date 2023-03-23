@@ -39,6 +39,11 @@ bool keyReleased = false;
 bool off = false;
 double currentAmplitude;
 
+// For echo
+uint32_t ech;
+uint32_t sech;
+bool RE = 0;
+
 // -------------------- VOLATILE --------------------
 #ifdef POLYPHONY
 volatile uint32_t currentStepSize[MAX_KEYS_PLAYED_TGT];
