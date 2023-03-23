@@ -10,6 +10,47 @@
 #include <wavestype.h>
 #include <variables.h>
 
+int t = 0;
+int i = 0;
+bool keyReleased = false;
+bool off = false;
+double currentAmplitude;
+
+double envelope(double tA, double tD, double maxAmplitude, double tR, double ks){
+  double kA = maxAmplitude/tA;
+  double kD = (maxAmplitude-ks)/(tD);
+  double kR = currentAmplitude/tR;
+  double newtD = tD + tA;
+   if (off == true){
+     if(t <= tR){
+        return currentAmplitude-kR*t;
+     }
+     else{
+       keyReleased = false;
+       currentStepSize = 0;
+       currentAmplitude = 0;
+       return 0.0;
+     }
+  }
+  else if (t <= tA){
+    currentAmplitude = kA*t;
+    keyReleased = true;
+    return kA*t;
+  }
+  else if(t <= newtD){
+    currentAmplitude = maxAmplitude-kD*(t-tA);
+    //Serial.println(8-kD*(t-tA));
+    return maxAmplitude-kD*(t-tA);
+    //over 8 seconds, output decreases from 8 to 6
+    //8-ks = 2
+  }
+  else{
+    keyReleased = true;
+    currentAmplitude = ks;
+    return ks;
+  }
+}
+
 uint32_t shiftIdxForOctave (int octave, int keyboardPositionIdx, uint32_t phase)
 {
   int shift = octave + keyboardPositionIdx - 4;
@@ -27,6 +68,7 @@ void sampleISR() {
 
   if (keyboardMode == RECEIVER)
   {
+    i+=1;
     if (WavetypeRotation == 0) // Sawtooth Wave
     {
       #ifdef POLYPHONY
@@ -59,7 +101,19 @@ void sampleISR() {
 
         int32_t Vout = (phaseAcc >> 24) - 128;
         Vout = Vout >> (8 - VolumeRotation);
-        
+
+        if (EnvelopeSwitch)
+        {
+          Vout = Vout * envelope(10.0, 10.0, 255.0, 15.0, 100.0);//make output 0 
+          Vout = Vout/256;
+
+          if(currentStepSize != 0){
+            if (i > 2500) {
+              t += 1;
+              i = 0;
+            }
+          }
+        }
         analogWrite(OUTR_PIN, Vout + 128);
       #endif
     }
@@ -168,6 +222,8 @@ void scanKeysTask(void * pvParameters)
   static signed int localWavetypeRotation = 0;
   static signed int localOctaveRotation = 4;
   static bool localModeSwitch = 0;
+  static bool localEchoSwitch = 0;
+  static bool localEnvelopeSwitch = 0;
   
   while (1) {
     vTaskDelayUntil( &xLastWakeTime, xFrequency );
@@ -183,10 +239,14 @@ void scanKeysTask(void * pvParameters)
     Volume.updateRotation(localKeyArray);
     WaveType.updateRotation(localKeyArray);
     Mode.updateSwitch(localKeyArray);
+    Envelope.updateSwitch(localKeyArray);
+    Echo.updateSwitch(localKeyArray);
 
     localVolumeRotation = Volume.getRotation();
     localWavetypeRotation = WaveType.getRotation();
     localModeSwitch = Mode.getSwitch();
+    localEnvelopeSwitch = Envelope.getSwitch();
+    localEchoSwitch = Echo.getSwitch();
 
     if (keyboardMode == RECEIVER) 
     {
@@ -267,11 +327,16 @@ void scanKeysTask(void * pvParameters)
       if (keyPressed != prevKeyPressed)
       {  
         if (keyPressed == 0) {
-          currentStepSize = 0;
           sineIdxAcc = 0;
+          if (!off) t = 0;
+          off = true;
+          currentStepSize = 0;
+          t = 0;
+          i = 0;
         } 
         else
         {
+          off = false;
           octave = localOctaveRotation ;
           currentStepSize = stepSizes[exponent-1];   
           sineIdxAcc = sineLookUpAcc[exponent-1];  
@@ -304,6 +369,8 @@ void scanKeysTask(void * pvParameters)
 
     #endif
     
+    __atomic_store_n(&EchoSwitch, localEchoSwitch, __ATOMIC_RELAXED);
+    __atomic_store_n(&EnvelopeSwitch, localEnvelopeSwitch, __ATOMIC_RELAXED);
     __atomic_store_n(&ModeSwitch, localModeSwitch, __ATOMIC_RELAXED);
     __atomic_store_n(&OctaveRotation, localOctaveRotation, __ATOMIC_RELAXED);
     __atomic_store_n(&VolumeRotation, localVolumeRotation, __ATOMIC_RELAXED);
@@ -353,49 +420,78 @@ void displayUpdateTask(void * pvParameters)
       u8g2.setCursor(90,10);
       u8g2.print("Sender");
     }
-    else if (singleKeyboard)
+    else if (singleKeyboard && keyboardMode == RECEIVER)
     {
       u8g2.setFont(u8g2_font_ncenB08_tr);
       u8g2.setCursor(90,10);
       u8g2.print("Single");
     }
-    if (keyboardMode == RECEIVER)
+    else if (keyboardMode == RECEIVER)
     {
-      u8g2.setFont(u8g2_font_open_iconic_play_1x_t);
-      u8g2.drawGlyph(2,30,79);
-      u8g2.setFont(u8g2_font_ncenB08_tr); 
-      u8g2.setCursor(14,30);
-      u8g2.print(VolumeRotation);
-      u8g2.setFont(u8g2_font_5x7_tr);
-      u8g2.setCursor(5,20);
-      u8g2.print("Vol.");
-
-      u8g2.setFont(u8g2_font_open_iconic_play_1x_t);
-      u8g2.drawGlyph(40,30,64);
-      u8g2.setFont(u8g2_font_ncenB08_tr);
-      u8g2.setCursor(52,30);
-      u8g2.print(WavetypeRotation);
-      u8g2.setFont(u8g2_font_5x7_tr);
-      u8g2.setCursor(39,20);
-      u8g2.print("Wave");
-
-      u8g2.setFont(u8g2_font_open_iconic_arrow_1x_t);
-      u8g2.drawGlyph(78,30,88);
-      u8g2.setFont(u8g2_font_ncenB08_tr); 
-      u8g2.setCursor(90,30);
-      u8g2.print(OctaveRotation);
-      u8g2.setFont(u8g2_font_5x7_tr);
-      u8g2.setCursor(79,20);
-      u8g2.print("Oct.");
-
       if (!ModeSwitch){
+        u8g2.setFont(u8g2_font_open_iconic_play_1x_t);
+        u8g2.drawGlyph(2,30,79);
+        u8g2.setFont(u8g2_font_ncenB08_tr); 
+        u8g2.setCursor(14,30);
+        u8g2.print(VolumeRotation);
+        u8g2.setFont(u8g2_font_5x7_tr);
+        u8g2.setCursor(5,20);
+        u8g2.print("Vol.");
+
+        u8g2.setFont(u8g2_font_open_iconic_play_1x_t);
+        u8g2.drawGlyph(40,30,64);
+        u8g2.setFont(u8g2_font_ncenB08_tr);
+        u8g2.setCursor(52,30);
+        u8g2.print(WavetypeRotation);
+        u8g2.setFont(u8g2_font_5x7_tr);
+        u8g2.setCursor(39,20);
+        u8g2.print("Wave");
+
+        u8g2.setFont(u8g2_font_open_iconic_arrow_1x_t);
+        u8g2.drawGlyph(78,30,88);
+        u8g2.setFont(u8g2_font_ncenB08_tr); 
+        u8g2.setCursor(90,30);
+        u8g2.print(OctaveRotation);
+        u8g2.setFont(u8g2_font_5x7_tr);
+        u8g2.setCursor(79,20);
+        u8g2.print("Oct.");
+
         u8g2.setFont(u8g2_font_pressstart2p_8u);
         u8g2.drawGlyph(118,28,77);
       }
       else {
         u8g2.setFont(u8g2_font_iconquadpix_m_all);
         u8g2.drawGlyph(116,30,86);
+
+        u8g2.setFont(u8g2_font_5x7_tr);
+        u8g2.setCursor(5,20);
+        u8g2.print("Env");
+
+        u8g2.setFont(u8g2_font_ncenB08_tr); 
+        
+        if (EnvelopeSwitch) {
+          u8g2.setCursor(4,30);
+          u8g2.print("ON");
+        }
+        else {
+          u8g2.setCursor(2,30);
+          u8g2.print("OFF");
+        }
+        u8g2.setFont(u8g2_font_5x7_tr);
+        u8g2.setCursor(38,20);
+        u8g2.print("Echo");
+
+        u8g2.setFont(u8g2_font_ncenB08_tr); 
+        if (EchoSwitch) {
+          u8g2.setCursor(40,30);
+          u8g2.print("ON");
+        }
+        else {
+          u8g2.setCursor(38,30);
+          u8g2.print("OFF");
+        }
       }
+      
 
       uint8_t localRX_Message[8];
       xSemaphoreTake(RX_MessageMutex, portMAX_DELAY);

@@ -18,7 +18,6 @@
 // For keyboard modes
 bool singleKeyboard = true;
 bool keyboardMode = RECEIVER;
-bool echo = false;
 volatile int keyboardPositionIdx = 0;
 int Idx = 0;
 int octave = 4;
@@ -31,6 +30,8 @@ Knob WaveType(1, 0, 0, 1);
 Knob Volume(0, 4, 0, 8);
 Knob Octave(2, 4, 3, 5);
 Knob Mode(3, 0, 0, 0);
+Knob Envelope(0,0,0,0);
+Knob Echo(1,0,0,0);
 
 // -------------------- VOLATILE --------------------
 #ifdef POLYPHONY
@@ -47,6 +48,8 @@ volatile signed int WavetypeRotation = 8;
 volatile signed int VolumeRotation = 4;
 volatile signed int OctaveRotation = 4;
 volatile bool ModeSwitch = 0;
+volatile bool EnvelopeSwitch = 0;
+volatile bool EchoSwitch = 0;
 volatile uint8_t RX_Message[8] = {0};
 uint32_t prevKeyPressed = 0;
 uint8_t prevMessageIn[8] = {};
