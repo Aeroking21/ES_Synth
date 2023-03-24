@@ -161,9 +161,9 @@ Since there is no loop connecting tasks, it can deduced that there is no deadloc
 
 ## User Interface
 
-<img src="./diagrams/first.jpg" alt="Display 1" width="550">
+<img src="./diagrams/first.jpeg" alt="Display 1" width="550">
 
-<img src="./diagrams/second.jpg" alt="Display 2" width="550">
+<img src="./diagrams/second.jpeg" alt="Display 2" width="550">
 
 ## Video
 
